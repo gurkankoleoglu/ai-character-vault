@@ -29,7 +29,7 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
-	// Rate Limit: 60 saniyede bir OTP (Test sırasında beklememek için burayı da yorum satırına alabilirsin)
+	// Rate Limit: 60 saniyede bir OTP
 	var lastOTP models.OTP
 	err := config.DB.Where("phone = ?", req.Phone).Order("created_at DESC").First(&lastOTP).Error
 	if err == nil && time.Since(lastOTP.CreatedAt) < 60*time.Second {
@@ -51,7 +51,7 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "OTP oluşturuldu (Test modunda kod kontrol edilmeyecektir)", "otp": otpCode})
+	c.JSON(http.StatusOK, gin.H{"message": "OTP oluşturuldu", "otp": otpCode})
 }
 
 // VerifyOTP: Gelen kodu doğrular ve kullanıcıyı giriş yaptırır/kaydeder
@@ -67,7 +67,6 @@ func VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	/* --- GELİŞTİRME AŞAMASI İÇİN OTP KONTROLÜ DEVRE DIŞI BIRAKILDI ---
 	var otp models.OTP
 	err := config.DB.Where("phone = ? AND is_used = ?", req.Phone, false).Order("created_at DESC").First(&otp).Error
 	if err != nil {
@@ -87,21 +86,12 @@ func VerifyOTP(c *gin.Context) {
 
 	otp.IsUsed = true
 	config.DB.Save(&otp)
-	------------------------------------------------------------------ */
 
-	// Doğrudan kullanıcı kayıt/giriş işlemine geçiyoruz
 	var user models.User
 	if err := config.DB.Where("phone = ?", req.Phone).First(&user).Error; err != nil {
-		// Kullanıcı yoksa yeni kayıt oluştur
-		user = models.User{
-			Phone:              req.Phone,
-			IsProfileCompleted: false,
-		}
+		user = models.User{Phone: req.Phone}
 		config.DB.Create(&user)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Giriş başarılı (Bypass modu aktif)",
-		"user_id": user.ID,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Giriş başarılı", "user_id": user.ID})
 }
