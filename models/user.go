@@ -7,6 +7,8 @@ import (
 type User struct {
 	ID                 uint      `gorm:"primaryKey" json:"id"`
 	Phone              string    `gorm:"unique;not null" json:"phone"`
+	FullNames          string    `json:"adSoyad"` // Başvurudan otomatik gelecek
+	Email              string    `json:"email"`   // Başvurudan otomatik gelecek
 	IsProfileCompleted bool      `gorm:"default:false" json:"is_profile_completed"`
 	CreatedAt          time.Time `json:"created_at"`
 }

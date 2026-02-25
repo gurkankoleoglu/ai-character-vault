@@ -12,6 +12,7 @@ type Application struct {
 	University     string `json:"okul"`
 	Department     string `json:"bolum"`
 	InternshipType string `json:"stajTuru"`
+	Durum          string `json:"durum" gorm:"default:Beklemede"`
 
 	// UUID ve Dosya Yolları
 	CVUUID     string `json:"cv_uuid"` // CV için benzersiz ID
