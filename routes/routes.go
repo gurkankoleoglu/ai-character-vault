@@ -13,4 +13,6 @@ func SetupRoutes(r *gin.Engine) {
 
 	r.POST("/request-otp", handlers.RequestOTP)
 	r.POST("/verify-otp", handlers.VerifyOTP)
+	// Başvuru Rotası (Yeni)
+	r.POST("/apply", handlers.CreateApplication)
 }
