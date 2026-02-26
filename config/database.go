@@ -24,7 +24,8 @@ func InitDatabase() {
 	err = DB.AutoMigrate(
 		&models.User{},
 		&models.OTP{},
-		&models.Application{}, // Yeni başvuru tablosu buraya eklendi
+		&models.Application{},    // Yeni başvuru tablosu buraya eklendi
+		&models.ContactMessage{}, // ContactMessage tablosu eklendi
 	)
 
 	if err != nil {

@@ -8,28 +8,31 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine) {
-	// Frontend'in (port 5173) Backend (port 8080) ile konuşmasına izin verir
+	// Frontend (5173) ve Backend (8080) arasındaki iletişimi sağlar
 	r.Use(cors.Default())
 
-	// --- Auth (Giriş) Rotaları ---
+	// --- 1. KULLANICI GİRİŞ (AUTH) ROTALARI ---
 	r.POST("/request-otp", handlers.RequestOTP)
 	r.POST("/verify-otp", handlers.VerifyOTP)
 
-	// --- Başvuru Rotaları ---
-	// 1. Yeni başvuru oluşturma
+	// --- 2. STAJ BAŞVURU ROTALARI ---
+	// Yeni staj başvurusu al
 	r.POST("/apply", handlers.CreateApplication)
 
-	// 2. Tüm başvuruları listeleme (Admin Panel ana ekranı)
+	// Tüm başvuruları listele (Admin Panel)
 	r.GET("/applications", handlers.GetApplications)
 
-	// 3. Başvuru durumunu güncelleme (Onayla/Reddet butonları için)
-	// PATCH kullanılır çünkü sadece 'durum' alanını kısmi olarak güncelliyoruz
+	// Başvuru durumunu (Onayla/Reddet) güncelle
 	r.PATCH("/applications/:id/status", handlers.UpdateApplicationStatus)
 
-	// 4. Başvuru bilgilerini düzenleme (Düzenle butonu/formu için)
-	// PUT kullanılır çünkü tüm başvuru verilerini güncelliyoruz
+	// Başvuru bilgilerini düzenle
 	r.PUT("/applications/:id", handlers.UpdateApplication)
 
-	// 5. Başvuruyu silme (Sil butonu için)
+	// Başvuruyu sistemden sil
 	r.DELETE("/applications/:id", handlers.DeleteApplication)
+
+	// --- 3. İLETİŞİM FORMU ROTASI ---
+	// Ana sayfadaki iletişim formundan gelen mesajları kaydeder
+	// Terminaldeki 404 hatasını çözen satır budur
+	r.POST("/contact", handlers.SendContactMessage)
 }
