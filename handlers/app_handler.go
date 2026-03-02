@@ -42,7 +42,6 @@ func CreateApplication(c *gin.Context) {
 
 	if cvFile != nil {
 		cvUUID = uuid.New().String()
-		// URL uyumluluğu için ToSlash kullanıyoruz
 		cvPath = filepath.ToSlash(filepath.Join("uploads", fmt.Sprintf("cv_%s%s", cvUUID, filepath.Ext(cvFile.Filename))))
 		c.SaveUploadedFile(cvFile, cvPath)
 	}
@@ -62,11 +61,11 @@ func CreateApplication(c *gin.Context) {
 		Department:     c.PostForm("bolum"),
 		InternshipType: c.PostForm("stajTuru"),
 		CVUUID:         cvUUID,
-		CVPath:         cvPath, // Frontend'de "i" butonu ile erişilecek yol
+		CVPath:         cvPath,
 		LetterUUID:     letterUUID,
-		LetterPath:     letterPath, // Frontend'de "i" butonu ile erişilecek yol
+		LetterPath:     letterPath,
 		UserID:         user.ID,
-		Durum:          "Beklemede", // Varsayılan durum
+		Durum:          "Beklemede",
 	}
 
 	if err := config.DB.Create(&app).Error; err != nil {
@@ -77,7 +76,7 @@ func CreateApplication(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Başvuru başarıyla tamamlandı!", "user_id": user.ID})
 }
 
-// GetApplications: Tüm başvuruları listeler (Admin Panel için)
+// GetApplications: Tüm başvuruları listeler (Admin Panel Ana Liste için)
 func GetApplications(c *gin.Context) {
 	var apps []models.Application
 	if err := config.DB.Order("created_at desc").Find(&apps).Error; err != nil {
@@ -87,10 +86,25 @@ func GetApplications(c *gin.Context) {
 	c.JSON(http.StatusOK, apps)
 }
 
+// --- YENİ EKLENEN KISIM: Admin Panelindeki Detay (i) Butonu İçin ---
+// GetApplicationDetail: Belirli bir başvurunun tüm detaylarını (Dosya yolları dahil) getirir
+func GetApplicationDetail(c *gin.Context) {
+	id := c.Param("id")
+	var application models.Application
+
+	// Başvuru bilgilerini buluyoruz
+	if err := config.DB.First(&application, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Başvuru bulunamadı"})
+		return
+	}
+
+	c.JSON(http.StatusOK, application)
+}
+
 // UpdateApplicationStatus: Başvurunun durumunu (Onaylandı/Reddedildi) günceller
 func UpdateApplicationStatus(c *gin.Context) {
 	id := c.Param("id")
-	status := c.Query("status") //
+	status := c.Query("status")
 
 	var app models.Application
 	if err := config.DB.First(&app, id).Error; err != nil {
@@ -107,7 +121,7 @@ func UpdateApplicationStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Durum güncellendi", "status": app.Durum})
 }
 
-// UpdateApplication: Başvuru bilgilerini düzenler (API Düzeyinde Aktif)
+// UpdateApplication: Başvuru bilgilerini düzenler
 func UpdateApplication(c *gin.Context) {
 	id := c.Param("id")
 	var app models.Application
@@ -132,7 +146,7 @@ func UpdateApplication(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Başvuru güncellendi", "data": app})
 }
 
-// DeleteApplication: Başvuruyu veritabanından siler (API Düzeyinde Aktif)
+// DeleteApplication: Başvuruyu veritabanından siler
 func DeleteApplication(c *gin.Context) {
 	id := c.Param("id")
 	if err := config.DB.Delete(&models.Application{}, id).Error; err != nil {

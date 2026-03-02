@@ -35,4 +35,11 @@ func SetupRoutes(r *gin.Engine) {
 	// Ana sayfadaki iletişim formundan gelen mesajları kaydeder
 	// Terminaldeki 404 hatasını çözen satır budur
 	r.POST("/contact", handlers.SendContactMessage)
+
+	// SetupRoutes içine ekle:
+	r.POST("/complete-profile", handlers.CompleteProfile)
+	// SetupRoutes içine ekle:
+	r.GET("/applications/:id", handlers.GetApplicationDetail)
+	// routes.go içine ekle
+	r.GET("/users/:phone", handlers.GetUserByPhone)
 }

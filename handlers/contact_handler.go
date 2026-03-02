@@ -32,9 +32,9 @@ func SendContactMessage(c *gin.Context) {
 
 func sendEmailToAdmin(msg models.ContactMessage) {
 	// 1. Senin Sistem Mail Bilgilerin
-	from := "canankkrc@gmail.com"    // Gönderici (Uygulama Şifresi aldığın mail)
-	password := ""                   // Google'dan aldığın 16 haneli şifre
-	to := "canan123karaca@gmail.com" // Mesajın düşeceği asıl hesap
+	from := "canankkrc@gmail.com"     // Gönderici (Uygulama Şifresi aldığın mail)
+	password := "otiu lwkm deqv vsvt" // Google'dan aldığın 16 haneli şifre
+	to := "canan123karaca@gmail.com"  // Mesajın düşeceği asıl hesap
 
 	smtpHost := "smtp.gmail.com"
 	smtpPort := "587"
