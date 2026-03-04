@@ -33,14 +33,11 @@ func SetupRoutes(r *gin.Engine) {
 
 	// --- 3. İLETİŞİM FORMU ROTASI ---
 	// Ana sayfadaki iletişim formundan gelen mesajları kaydeder
-	// Terminaldeki 404 hatasını çözen satır budur
 	r.POST("/contact", handlers.SendContactMessage)
 
 	// SetupRoutes içine ekle:
 	r.POST("/complete-profile", handlers.CompleteProfile)
-	// SetupRoutes içine ekle:
 	r.GET("/applications/:id", handlers.GetApplicationDetail)
-	// routes.go içine ekle
 	r.GET("/users/:phone", handlers.GetUserByPhone)
 	// Mevcut rotalarının arasına ekle
 	r.GET("/intern-progress/:phone", handlers.GetInternProgress)
@@ -50,4 +47,20 @@ func SetupRoutes(r *gin.Engine) {
 	// Mevcut rotalarının yanına ekle
 	r.PUT("/update-report/:id", handlers.UpdateReport)
 	r.DELETE("/delete-report/:id", handlers.DeleteReport)
+
+	// --- 4. DUYURU ROTALARI ---
+	// Yeni bir duyuru oluştur
+	r.POST("/announcements", handlers.CreateAnnouncement)
+
+	// Tüm duyuruları listele
+	r.GET("/announcements", handlers.GetAnnouncements)
+
+	// Belirli bir duyuruyu getir
+	r.GET("/announcements/:id", handlers.GetAnnouncementDetail)
+
+	// Duyuruyu güncelle
+	r.PUT("/announcements/:id", handlers.UpdateAnnouncement)
+
+	// Duyuruyu sil
+	r.DELETE("/announcements/:id", handlers.DeleteAnnouncement)
 }

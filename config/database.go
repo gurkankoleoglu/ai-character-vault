@@ -25,7 +25,8 @@ func InitDatabase() {
 		&models.OTP{},
 		&models.Application{},
 		&models.ContactMessage{},
-		&models.DailyReport{}, // İŞTE EKSİK OLAN VE HATAYA SEBEP OLAN SATIR
+		&models.DailyReport{},  // İŞTE EKSİK OLAN VE HATAYA SEBEP OLAN SATIR
+		&models.Announcement{}, // Announcement tablosu eklendi
 	)
 
 	if err != nil {
