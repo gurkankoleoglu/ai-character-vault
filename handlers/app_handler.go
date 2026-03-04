@@ -11,11 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-// CreateApplication: Başvuru oluşturur ve mükerrer kaydı engeller
+// CreateApplication: Başvuru oluşturur ve User tablosundaki profil bilgilerini senkronize eder
 func CreateApplication(c *gin.Context) {
-	phone := c.PostForm("telefon")
-	adSoyad := c.PostForm("adSoyad")
+	// Form verilerini alıyoruz (React tarafındaki FormData isimleriyle uyumlu)
+	phone := c.PostForm("phone")
+	adSoyad := c.PostForm("full_name")
 	email := c.PostForm("email")
+	okul := c.PostForm("university")
+	bolum := c.PostForm("department")
+	stajTuru := c.PostForm("intern_type")
 
 	// 1. Mükerrer Başvuru Kontrolü
 	var existingApp models.Application
@@ -24,26 +28,43 @@ func CreateApplication(c *gin.Context) {
 		return
 	}
 
-	// 2. Kullanıcı Kontrolü ve Otomatik Kayıt
+	// 2. Kullanıcı Kontrolü ve Profil Bilgilerini Güncelleme (Dataset Senkronizasyonu)
 	var user models.User
 	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
+		// Kullanıcı yoksa oluştur (Auto-Register)
 		user = models.User{
-			Phone:     phone,
-			FullNames: adSoyad,
-			Email:     email,
+			Phone:              phone,
+			FullNames:          adSoyad,
+			Email:              email,
+			University:         okul,
+			Department:         bolum,
+			IsProfileCompleted: true,
 		}
 		config.DB.Create(&user)
+	} else {
+		// Kullanıcı varsa, başvuru formundaki güncel bilgilerle User tablosunu güncelle
+		config.DB.Model(&user).Updates(models.User{
+			FullNames:          adSoyad,
+			Email:              email,
+			University:         okul,
+			Department:         bolum,
+			IsProfileCompleted: true,
+		})
 	}
 
-	// 3. Dosya İşlemleri (UUID)
-	cvFile, _ := c.FormFile("dosya")
-	letterFile, _ := c.FormFile("motivasyonDosya")
+	// 3. Dosya İşlemleri (CV ve Motivasyon Mektubu)
+	cvFile, _ := c.FormFile("cv_file") // Frontend'deki name="cv_file"
+	letterFile, _ := c.FormFile("letter_file")
+
 	var cvUUID, cvPath, letterUUID, letterPath string
 
 	if cvFile != nil {
 		cvUUID = uuid.New().String()
 		cvPath = filepath.ToSlash(filepath.Join("uploads", fmt.Sprintf("cv_%s%s", cvUUID, filepath.Ext(cvFile.Filename))))
-		c.SaveUploadedFile(cvFile, cvPath)
+		if err := c.SaveUploadedFile(cvFile, cvPath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "CV kaydedilemedi"})
+			return
+		}
 	}
 
 	if letterFile != nil {
@@ -52,14 +73,14 @@ func CreateApplication(c *gin.Context) {
 		c.SaveUploadedFile(letterFile, letterPath)
 	}
 
-	// 4. Başvuru Kaydı
+	// 4. Başvuru Kaydı Oluşturma
 	app := models.Application{
 		FullNames:      adSoyad,
 		Email:          email,
 		Phone:          phone,
-		University:     c.PostForm("okul"),
-		Department:     c.PostForm("bolum"),
-		InternshipType: c.PostForm("stajTuru"),
+		University:     okul,
+		Department:     bolum,
+		InternshipType: stajTuru,
 		CVUUID:         cvUUID,
 		CVPath:         cvPath,
 		LetterUUID:     letterUUID,
@@ -69,14 +90,18 @@ func CreateApplication(c *gin.Context) {
 	}
 
 	if err := config.DB.Create(&app).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Veritabanı hatası"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Başvuru veritabanına kaydedilemedi"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Başvuru başarıyla tamamlandı!", "user_id": user.ID})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Başvuru başarıyla tamamlandı!",
+		"status":  "Beklemede",
+		"user_id": user.ID,
+	})
 }
 
-// GetApplications: Tüm başvuruları listeler (Admin Panel Ana Liste için)
+// GetApplications: Admin paneli için tüm başvuruları getirir
 func GetApplications(c *gin.Context) {
 	var apps []models.Application
 	if err := config.DB.Order("created_at desc").Find(&apps).Error; err != nil {
@@ -86,72 +111,35 @@ func GetApplications(c *gin.Context) {
 	c.JSON(http.StatusOK, apps)
 }
 
-// --- YENİ EKLENEN KISIM: Admin Panelindeki Detay (i) Butonu İçin ---
-// GetApplicationDetail: Belirli bir başvurunun tüm detaylarını (Dosya yolları dahil) getirir
+// GetApplicationDetail: Tek bir başvurunun detayını getirir
 func GetApplicationDetail(c *gin.Context) {
 	id := c.Param("id")
 	var application models.Application
-
-	// Başvuru bilgilerini buluyoruz
 	if err := config.DB.First(&application, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Başvuru bulunamadı"})
 		return
 	}
-
 	c.JSON(http.StatusOK, application)
 }
 
-// UpdateApplicationStatus: Başvurunun durumunu (Onaylandı/Reddedildi) günceller
+// UpdateApplicationStatus: Adminin onay/ret işlemini gerçekleştirir
 func UpdateApplicationStatus(c *gin.Context) {
 	id := c.Param("id")
-	status := c.Query("status")
+	status := c.Query("status") // ?status=Onaylandı gibi
 
-	var app models.Application
-	if err := config.DB.First(&app, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Başvuru bulunamadı"})
-		return
-	}
-
-	app.Durum = status
-	if err := config.DB.Save(&app).Error; err != nil {
+	if err := config.DB.Model(&models.Application{}).Where("id = ?", id).Update("durum", status).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Durum güncellenemedi"})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Durum güncellendi", "status": app.Durum})
+	c.JSON(http.StatusOK, gin.H{"message": "Durum güncellendi", "new_status": status})
 }
 
-// UpdateApplication: Başvuru bilgilerini düzenler
-func UpdateApplication(c *gin.Context) {
-	id := c.Param("id")
-	var app models.Application
-
-	if err := config.DB.First(&app, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Başvuru bulunamadı"})
-		return
-	}
-
-	app.FullNames = c.PostForm("adSoyad")
-	app.Email = c.PostForm("email")
-	app.University = c.PostForm("okul")
-	app.Department = c.PostForm("bolum")
-	app.InternshipType = c.PostForm("stajTuru")
-	app.Phone = c.PostForm("telefon")
-
-	if err := config.DB.Save(&app).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Güncelleme başarısız"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Başvuru güncellendi", "data": app})
-}
-
-// DeleteApplication: Başvuruyu veritabanından siler
+// DeleteApplication: Başvuruyu siler
 func DeleteApplication(c *gin.Context) {
 	id := c.Param("id")
 	if err := config.DB.Delete(&models.Application{}, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Silme işlemi başarısız"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Silme hatası"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Başvuru başarıyla silindi"})
+	c.JSON(http.StatusOK, gin.H{"message": "Başvuru silindi"})
 }

@@ -24,13 +24,11 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
-	// Telefon format kontrolü
 	if !utils.IsValidTurkishPhone(req.Phone) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Telefon 10 hane olmalı ve 5 ile başlamalıdır"})
 		return
 	}
 
-	// Rate Limit: 60 saniye kuralı
 	var lastOTP models.OTP
 	err := config.DB.Where("phone = ?", req.Phone).Order("created_at DESC").First(&lastOTP).Error
 	if err == nil && time.Since(lastOTP.CreatedAt) < 60*time.Second {
@@ -53,7 +51,7 @@ func RequestOTP(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Doğrulama kodu oluşturuldu.", "otp": otpCode})
 }
 
-// VerifyOTP: Gelen kodu doğrular ve kullanıcının profil durumunu döner
+// VerifyOTP: Kod doğrulama sonrası kullanıcı durumunu kontrol eder
 func VerifyOTP(c *gin.Context) {
 	type Request struct {
 		Phone string `json:"phone" binding:"required"`
@@ -83,21 +81,19 @@ func VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	// Kod doğrulandı, kullanıldı olarak işaretle
 	otp.IsUsed = true
 	config.DB.Save(&otp)
 
-	// Kullanıcıyı kontrol et
 	var user models.User
 	isNewUser := false
 
 	if err := config.DB.Where("phone = ?", req.Phone).First(&user).Error; err != nil {
-		// Kullanıcı yoksa oluştur (Auto-Register)
+		// Kayıtlı kullanıcı yoksa oluştur
 		user = models.User{Phone: req.Phone, Role: "user"}
 		config.DB.Create(&user)
 		isNewUser = true
 	} else {
-		// Kullanıcı var ama FullNames (Ad Soyad) alanı boşsa "Yeni Kullanıcı" sayılır
+		// Veritabanında var ama isim/soyisim girilmemişse yeni sayılır
 		if user.FullNames == "" {
 			isNewUser = true
 		}
@@ -108,11 +104,11 @@ func VerifyOTP(c *gin.Context) {
 		"user_id":     user.ID,
 		"phone":       user.Phone,
 		"role":        user.Role,
-		"is_new_user": isNewUser, // Frontend bu bayrağa göre yönlendirme yapacak
+		"is_new_user": isNewUser,
 	})
 }
 
-// CompleteProfile: Eksik olan profil bilgilerini veritabanına yazar
+// CompleteProfile: Frontend'den gelen profil bilgilerini kaydeder
 func CompleteProfile(c *gin.Context) {
 	type ProfileUpdateRequest struct {
 		Phone      string `json:"phone" binding:"required"`
@@ -121,21 +117,23 @@ func CompleteProfile(c *gin.Context) {
 		Email      string `json:"email"`
 		University string `json:"university"`
 		Department string `json:"department"`
+		InternType string `json:"intern_type"` // Staj Tipi eklendi
+		Gender     string `json:"gender"`      // Cinsiyet eklendi
 	}
 
 	var req ProfileUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Geçersiz veri formatı"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Veri formatı hatalı"})
 		return
 	}
 
 	var user models.User
 	if err := config.DB.Where("phone = ?", req.Phone).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı. Lütfen önce giriş yapın."})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
 		return
 	}
 
-	// Verileri Model'deki alanlarla eşle
+	// Dataset alanlarını güncelle
 	user.FullNames = req.FullName
 	user.Email = req.Email
 	user.TCNo = req.TCKimlik
@@ -144,25 +142,24 @@ func CompleteProfile(c *gin.Context) {
 	user.IsProfileCompleted = true
 
 	if err := config.DB.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Profil güncellenirken hata oluştu"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Veritabanı güncelleme hatası"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Profil başarıyla tamamlandı",
-		"user":    user,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Profil başarıyla güncellendi", "user": user})
 }
 
-// GetUserByPhone: Telefon numarasına göre kullanıcı bilgilerini döner (Giriş kontrolü için)
+// GetUserByPhone: Belirtilen telefon numarasına sahip kullanıcının tüm bilgilerini döner
 func GetUserByPhone(c *gin.Context) {
 	phone := c.Param("phone")
 	var user models.User
 
+	// Frontend'in (Hesap Bilgileri ekranı) verileri doğru çekmesi için ana sorgu
 	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı veritabanında bulunamadı"})
 		return
 	}
 
+	// Dataset'ten gelen ham veriyi döndürür
 	c.JSON(http.StatusOK, user)
 }

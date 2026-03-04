@@ -6,20 +6,18 @@ import (
 
 type Application struct {
 	gorm.Model
-	FullNames      string `json:"adSoyad"`
+	FullNames      string `json:"full_name"` // React tarafında full_name bekliyoruz
 	Email          string `json:"email"`
-	Phone          string `json:"telefon"`
-	University     string `json:"okul"`
-	Department     string `json:"bolum"`
-	InternshipType string `json:"stajTuru"`
-	Durum          string `json:"durum" gorm:"default:Beklemede"`
+	Phone          string `json:"phone"`                           // telefon -> phone (tutarlılık için)
+	University     string `json:"university"`                      // okul -> university
+	Department     string `json:"department"`                      // bolum -> department
+	InternshipType string `json:"intern_type"`                     // stajTuru -> intern_type
+	Durum          string `json:"status" gorm:"default:Beklemede"` // durum -> status
 
-	// UUID ve Dosya Yolları
-	CVUUID     string `json:"cv_uuid"` // CV için benzersiz ID
+	CVUUID     string `json:"cv_uuid"`
 	CVPath     string `json:"cv_path"`
-	LetterUUID string `json:"letter_uuid"` // Motivasyon mektubu için benzersiz ID
+	LetterUUID string `json:"letter_uuid"`
 	LetterPath string `json:"letter_path"`
 
-	// Kullanıcı İlişkisi
-	UserID uint `json:"user_id"` // Hangi kullanıcı yüklediyse onun ID'si
+	UserID uint `json:"user_id"`
 }

@@ -26,7 +26,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.PATCH("/applications/:id/status", handlers.UpdateApplicationStatus)
 
 	// Başvuru bilgilerini düzenle
-	r.PUT("/applications/:id", handlers.UpdateApplication)
+	// r.PUT("/applications/:id", handlers.UpdateApplication)
 
 	// Başvuruyu sistemden sil
 	r.DELETE("/applications/:id", handlers.DeleteApplication)
