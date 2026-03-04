@@ -42,4 +42,12 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/applications/:id", handlers.GetApplicationDetail)
 	// routes.go içine ekle
 	r.GET("/users/:phone", handlers.GetUserByPhone)
+	// Mevcut rotalarının arasına ekle
+	r.GET("/intern-progress/:phone", handlers.GetInternProgress)
+	// Rapor kaydetmek için POST rotası
+	r.POST("/save-report", handlers.SaveDailyReport)
+	r.GET("/user-reports/:phone", handlers.GetUserReports)
+	// Mevcut rotalarının yanına ekle
+	r.PUT("/update-report/:id", handlers.UpdateReport)
+	r.DELETE("/delete-report/:id", handlers.DeleteReport)
 }

@@ -2,7 +2,7 @@ package config
 
 import (
 	"log"
-	"stajyer-backend/models" // Modül adınızın stajyer-backend olduğundan emin olun
+	"stajyer-backend/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -11,7 +11,6 @@ import (
 var DB *gorm.DB
 
 func InitDatabase() {
-	// Docker üzerindeki PostgreSQL bağlantı bilgileri
 	dsn := "host=localhost user=postgres password=Canan3905. dbname=stajyer_auth port=5432 sslmode=disable"
 
 	var err error
@@ -24,13 +23,14 @@ func InitDatabase() {
 	err = DB.AutoMigrate(
 		&models.User{},
 		&models.OTP{},
-		&models.Application{},    // Yeni başvuru tablosu buraya eklendi
-		&models.ContactMessage{}, // ContactMessage tablosu eklendi
+		&models.Application{},
+		&models.ContactMessage{},
+		&models.DailyReport{}, // İŞTE EKSİK OLAN VE HATAYA SEBEP OLAN SATIR
 	)
 
 	if err != nil {
 		log.Fatal("Migration hatası:", err)
 	}
 
-	log.Println("Veritabanı bağlantısı ve migration başarılı.")
+	log.Println("Veritabanı bağlantısı ve migration (DailyReport dahil) başarılı.")
 }
