@@ -143,3 +143,25 @@ func DeleteApplication(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Başvuru silindi"})
 }
+
+// YENİ EKLEDİM
+// CheckApplicationStatus: Kullanıcının başvuru durumunu telefon numarasına göre döndürür
+func CheckApplicationStatus(c *gin.Context) {
+	phone := c.Param("phone")
+	var app models.Application
+
+	if err := config.DB.Where("phone = ?", phone).First(&app).Error; err != nil {
+		// Eğer başvuru bulunamazsa
+		c.JSON(http.StatusOK, gin.H{
+			"has_application": false,
+			"status":          nil,
+		})
+		return
+	}
+
+	// Başvuru bulunursa
+	c.JSON(http.StatusOK, gin.H{
+		"has_application": true,
+		"status":          app.Durum, // Veritabanındaki 'Beklemede' veya 'Onaylandı' durumu
+	})
+}
