@@ -1,17 +1,20 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"path/filepath"
 	"stajyer-backend/config"
 	"stajyer-backend/models"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // InitializeDatabase: Veritabanı tablolarını oluşturur
 func InitializeDatabase() {
-	// Announcement tablosunu oluştur
 	err := config.DB.AutoMigrate(&models.Announcement{})
 	if err != nil {
 		panic("Announcement tablosu oluşturulurken hata oluştu: " + err.Error())
@@ -20,12 +23,39 @@ func InitializeDatabase() {
 
 // CreateAnnouncement: Yeni bir duyuru oluşturur
 func CreateAnnouncement(c *gin.Context) {
-	var announcement models.Announcement
+	// JSON yerine FormData'dan verileri çekiyoruz
+	title := c.PostForm("title")
+	annType := c.PostForm("type")
+	subject := c.PostForm("subject")
+	content := c.PostForm("content")
+	dateStr := c.PostForm("date")
 
-	// Bind the JSON data to the Announcement struct directly (only once)
-	if err := c.ShouldBindJSON(&announcement); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Geçersiz duyuru verisi", "details": err.Error()})
-		return
+	parsedDate := time.Now()
+	if pd, err := time.Parse(time.RFC3339, dateStr); err == nil {
+		parsedDate = pd
+	}
+
+	// Resim dosyasını al ve uploads klasörüne kaydet
+	var imageURL string
+	file, _ := c.FormFile("image")
+	if file != nil {
+		fileUUID := uuid.New().String()
+		ext := filepath.Ext(file.Filename)
+		fileName := fmt.Sprintf("ann_%s%s", fileUUID, ext)
+		savePath := filepath.ToSlash(filepath.Join("uploads", fileName))
+
+		if err := c.SaveUploadedFile(file, savePath); err == nil {
+			imageURL = "http://localhost:8080/" + savePath
+		}
+	}
+
+	announcement := models.Announcement{
+		Title:    title,
+		Type:     annType,
+		Subject:  subject,
+		Content:  content,
+		Date:     parsedDate,
+		ImageURL: imageURL,
 	}
 
 	// Save the announcement to the database
@@ -40,7 +70,6 @@ func CreateAnnouncement(c *gin.Context) {
 // GetAnnouncements: Tüm duyuruları getirir
 func GetAnnouncements(c *gin.Context) {
 	var announcements []models.Announcement
-	// Son eklenenlerin en üstte gelmesi için Order eklendi
 	if err := config.DB.Order("created_at desc").Find(&announcements).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Duyurular getirilemedi"})
 		return
@@ -70,18 +99,29 @@ func UpdateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	var updatedData models.Announcement
-	if err := c.ShouldBindJSON(&updatedData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Geçersiz duyuru verisi"})
-		return
+	// Yeni verileri ata
+	announcement.Title = c.PostForm("title")
+	announcement.Type = c.PostForm("type")
+	announcement.Subject = c.PostForm("subject")
+	announcement.Content = c.PostForm("content")
+
+	dateStr := c.PostForm("date")
+	if pd, err := time.Parse(time.RFC3339, dateStr); err == nil {
+		announcement.Date = pd
 	}
 
-	// Update fields
-	announcement.Title = updatedData.Title
-	announcement.Content = updatedData.Content
-	announcement.Subject = updatedData.Subject
-	announcement.Date = updatedData.Date
-	announcement.Type = updatedData.Type
+	// Eğer güncelleme sırasında yeni bir resim yüklendiyse onu değiştir
+	file, _ := c.FormFile("image")
+	if file != nil {
+		fileUUID := uuid.New().String()
+		ext := filepath.Ext(file.Filename)
+		fileName := fmt.Sprintf("ann_%s%s", fileUUID, ext)
+		savePath := filepath.ToSlash(filepath.Join("uploads", fileName))
+
+		if err := c.SaveUploadedFile(file, savePath); err == nil {
+			announcement.ImageURL = "http://localhost:8080/" + savePath
+		}
+	}
 
 	if err := config.DB.Save(&announcement).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Duyuru güncellenemedi"})

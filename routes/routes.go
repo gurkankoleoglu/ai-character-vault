@@ -83,6 +83,12 @@ func SetupRoutes(r *gin.Engine) {
 	// Frontend (5173) ve Backend (8080) arasındaki iletişimi sağlar
 	r.Use(cors.Default())
 
+	// --- STATİK DOSYA SUNUMU (YENİ EKLENDİ) ---
+	// Bu satır, yüklenen resimlerin (veya CV'lerin) frontend tarafında
+	// "http://localhost:8080/uploads/..." şeklinde görüntülenmesini sağlar.
+
+	//r.Static("/uploads", "./uploads")
+
 	// --- 1. KULLANICI GİRİŞ (AUTH) ROTALARI ---
 	r.POST("/request-otp", handlers.RequestOTP)
 	r.POST("/verify-otp", handlers.VerifyOTP)
@@ -114,11 +120,14 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/complete-profile", handlers.CompleteProfile)
 	r.GET("/applications/:id", handlers.GetApplicationDetail)
 	r.GET("/users/:phone", handlers.GetUserByPhone)
+
 	// Mevcut rotalarının arasına ekle
 	r.GET("/intern-progress/:phone", handlers.GetInternProgress)
+
 	// Rapor kaydetmek için POST rotası
 	r.POST("/save-report", handlers.SaveDailyReport)
 	r.GET("/user-reports/:phone", handlers.GetUserReports)
+
 	// Mevcut rotalarının yanına ekle
 	r.PUT("/update-report/:id", handlers.UpdateReport)
 	r.DELETE("/delete-report/:id", handlers.DeleteReport)

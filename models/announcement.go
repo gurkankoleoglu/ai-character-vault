@@ -10,7 +10,8 @@ type Announcement struct {
 	Content   string    `gorm:"type:text;not null" json:"content"`
 	Subject   string    `gorm:"type:varchar(255)" json:"subject"`
 	Date      time.Time `gorm:"not null" json:"date"`
-	Type      string    `gorm:"type:varchar(50);not null" json:"type"` // Changed from enum to varchar
+	Type      string    `gorm:"type:varchar(50);not null" json:"type"`
+	ImageURL  string    `gorm:"type:varchar(500)" json:"image_url"` // YENİ EKLENDİ: Resim yolunu tutacak alan
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
