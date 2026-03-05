@@ -13,16 +13,15 @@ import (
 
 // CreateApplication: Başvuru oluşturur ve User tablosundaki profil bilgilerini senkronize eder
 func CreateApplication(c *gin.Context) {
-	// Form verilerini alıyoruz (React tarafındaki FormData isimleriyle uyumlu)
 	phone := c.PostForm("phone")
 	adSoyad := c.PostForm("full_name")
 	email := c.PostForm("email")
 	okul := c.PostForm("university")
 	bolum := c.PostForm("department")
 	stajTuru := c.PostForm("intern_type")
+	stajTarihleri := c.PostForm("stajTarihleri") // YENİ EKLENDİ: Formdan tarih bilgisini çekiyoruz
 
 	// 1. Mükerrer Başvuru Kontrolü
-	// Sadece durumu "Beklemede" veya "Onaylandı" olan bir başvuru varsa engelle.
 	// "Reddedildi" olanlar bu sorguya takılmaz ve yeni başvuruya izin verilir.
 	var existingApp models.Application
 	if err := config.DB.Where("phone = ? AND durum IN ?", phone, []string{"Beklemede", "Onaylandı"}).First(&existingApp).Error; err == nil {
@@ -30,10 +29,9 @@ func CreateApplication(c *gin.Context) {
 		return
 	}
 
-	// 2. Kullanıcı Kontrolü ve Profil Bilgilerini Güncelleme (Dataset Senkronizasyonu)
+	// 2. Kullanıcı Kontrolü ve Profil Bilgilerini Güncelleme
 	var user models.User
 	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
-		// Kullanıcı yoksa oluştur (Auto-Register)
 		user = models.User{
 			Phone:              phone,
 			FullNames:          adSoyad,
@@ -44,7 +42,6 @@ func CreateApplication(c *gin.Context) {
 		}
 		config.DB.Create(&user)
 	} else {
-		// Kullanıcı varsa, başvuru formundaki güncel bilgilerle User tablosunu güncelle
 		config.DB.Model(&user).Updates(models.User{
 			FullNames:          adSoyad,
 			Email:              email,
@@ -55,7 +52,7 @@ func CreateApplication(c *gin.Context) {
 	}
 
 	// 3. Dosya İşlemleri (CV ve Motivasyon Mektubu)
-	cvFile, _ := c.FormFile("cv_file") // Frontend'deki name="cv_file"
+	cvFile, _ := c.FormFile("cv_file")
 	letterFile, _ := c.FormFile("letter_file")
 
 	var cvUUID, cvPath, letterUUID, letterPath string
@@ -83,6 +80,7 @@ func CreateApplication(c *gin.Context) {
 		University:     okul,
 		Department:     bolum,
 		InternshipType: stajTuru,
+		StajTarihleri:  stajTarihleri, // YENİ EKLENDİ: Tarihleri veritabanı modeline atıyoruz
 		CVUUID:         cvUUID,
 		CVPath:         cvPath,
 		LetterUUID:     letterUUID,
@@ -151,10 +149,7 @@ func CheckApplicationStatus(c *gin.Context) {
 	phone := c.Param("phone")
 	var app models.Application
 
-	// Order("created_at desc") ile en son başvuruyu çekiyoruz ki
-	// reddedilmiş eski bir başvuru yerine, yeni yapılan başvurunun durumu gelsin.
 	if err := config.DB.Where("phone = ?", phone).Order("created_at desc").First(&app).Error; err != nil {
-		// Eğer hiçbir başvuru bulunamazsa
 		c.JSON(http.StatusOK, gin.H{
 			"has_application": false,
 			"status":          nil,
@@ -162,7 +157,6 @@ func CheckApplicationStatus(c *gin.Context) {
 		return
 	}
 
-	// Başvuru bulunursa
 	c.JSON(http.StatusOK, gin.H{
 		"has_application": true,
 		"status":          app.Durum,

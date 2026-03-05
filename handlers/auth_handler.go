@@ -29,6 +29,22 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
+	// YENİ GÜVENLİK KONTROLÜ: Sadece adminler veya "Onaylandı" durumunda başvurusu olanlar giriş yapabilir.
+	var user models.User
+	isAdmin := false
+	if err := config.DB.Where("phone = ?", req.Phone).First(&user).Error; err == nil && user.Role == "admin" {
+		isAdmin = true
+	}
+
+	if !isAdmin {
+		var app models.Application
+		if err := config.DB.Where("phone = ? AND durum = ?", req.Phone, "Onaylandı").First(&app).Error; err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Sadece başvurusu onaylanan stajyerler giriş yapabilir."})
+			return
+		}
+	}
+
+	// Spam kontrolü
 	var lastOTP models.OTP
 	err := config.DB.Where("phone = ?", req.Phone).Order("created_at DESC").First(&lastOTP).Error
 	if err == nil && time.Since(lastOTP.CreatedAt) < 60*time.Second {

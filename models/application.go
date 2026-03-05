@@ -13,6 +13,7 @@ type Application struct {
 	Department     string `json:"department"`                      // bolum -> department
 	InternshipType string `json:"intern_type"`                     // stajTuru -> intern_type
 	Durum          string `json:"status" gorm:"default:Beklemede"` // durum -> status
+	StajTarihleri  string `json:"stajTarihleri"`                   // YENİ EKLENDİ: Başvuru tarihlerini tutacak
 
 	CVUUID     string `json:"cv_uuid"`
 	CVPath     string `json:"cv_path"`
