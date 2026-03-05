@@ -22,9 +22,11 @@ func CreateApplication(c *gin.Context) {
 	stajTuru := c.PostForm("intern_type")
 
 	// 1. Mükerrer Başvuru Kontrolü
+	// Sadece durumu "Beklemede" veya "Onaylandı" olan bir başvuru varsa engelle.
+	// "Reddedildi" olanlar bu sorguya takılmaz ve yeni başvuruya izin verilir.
 	var existingApp models.Application
-	if err := config.DB.Where("phone = ?", phone).First(&existingApp).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Bu telefon numarası ile daha önce başvuru yapılmıştır."})
+	if err := config.DB.Where("phone = ? AND durum IN ?", phone, []string{"Beklemede", "Onaylandı"}).First(&existingApp).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Bu telefon numarası ile devam eden veya onaylanmış bir başvurunuz bulunmaktadır."})
 		return
 	}
 
@@ -144,14 +146,15 @@ func DeleteApplication(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Başvuru silindi"})
 }
 
-// YENİ EKLEDİM
 // CheckApplicationStatus: Kullanıcının başvuru durumunu telefon numarasına göre döndürür
 func CheckApplicationStatus(c *gin.Context) {
 	phone := c.Param("phone")
 	var app models.Application
 
-	if err := config.DB.Where("phone = ?", phone).First(&app).Error; err != nil {
-		// Eğer başvuru bulunamazsa
+	// Order("created_at desc") ile en son başvuruyu çekiyoruz ki
+	// reddedilmiş eski bir başvuru yerine, yeni yapılan başvurunun durumu gelsin.
+	if err := config.DB.Where("phone = ?", phone).Order("created_at desc").First(&app).Error; err != nil {
+		// Eğer hiçbir başvuru bulunamazsa
 		c.JSON(http.StatusOK, gin.H{
 			"has_application": false,
 			"status":          nil,
@@ -162,6 +165,6 @@ func CheckApplicationStatus(c *gin.Context) {
 	// Başvuru bulunursa
 	c.JSON(http.StatusOK, gin.H{
 		"has_application": true,
-		"status":          app.Durum, // Veritabanındaki 'Beklemede' veya 'Onaylandı' durumu
+		"status":          app.Durum,
 	})
 }
