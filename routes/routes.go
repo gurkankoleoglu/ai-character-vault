@@ -147,4 +147,7 @@ func SetupRoutes(r *gin.Engine) {
 
 	// Duyuruyu sil
 	r.DELETE("/announcements/:id", handlers.DeleteAnnouncement)
+
+	r.POST("/jobs", handlers.CreateJob)
+	r.GET("/jobs", handlers.GetAllJobs)
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// CreateApplication: Yeni başvuru oluşturur ve User tablosunu günceller
+// CreateApplication: Yeni başvuru oluşturur ve User/Student tablolarını günceller
 func CreateApplication(c *gin.Context) {
 	phone := c.PostForm("phone")
 	adSoyad := c.PostForm("full_name")
@@ -30,16 +30,33 @@ func CreateApplication(c *gin.Context) {
 		return
 	}
 
-	// 2. Kullanıcı Bilgilerini Güncelle (Dashboard için Senkronizasyon)
+	// 2. Kullanıcı Bilgilerini Güncelle (YENİ MİMARİYE GÖRE AYARLANDI)
 	var user models.User
 	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err == nil {
+		// Ana User tablosunu güncelle
 		config.DB.Model(&user).Updates(models.User{
 			FullNames:          adSoyad,
 			Email:              email,
-			University:         okul,
-			Department:         bolum,
 			IsProfileCompleted: true,
 		})
+
+		// Okul ve Bölüm bilgilerini yeni Student tablosuna aktar/güncelle
+		var student models.Student
+		if err := config.DB.Where("user_id = ?", user.ID).First(&student).Error; err != nil {
+			// Öğrenci profili henüz yoksa oluştur
+			student = models.Student{
+				UserID:     user.ID,
+				University: okul,
+				Department: bolum,
+			}
+			config.DB.Create(&student)
+		} else {
+			// Zaten varsa sadece alanları güncelle
+			config.DB.Model(&student).Updates(models.Student{
+				University: okul,
+				Department: bolum,
+			})
+		}
 	}
 
 	// 3. Dosya Kaydetme (CV ve Mektup)
@@ -100,7 +117,7 @@ func UpdateApplicationStatus(c *gin.Context) {
 		return
 	}
 
-	// 📱 SMS SİMÜLATÖRÜ - TERMİNAL ÇIKTISI (Switch yapısı ile optimize edildi)
+	// 📱 SMS SİMÜLATÖRÜ - TERMİNAL ÇIKTISI
 	fmt.Println("\n" + strings.Repeat("*", 60))
 	fmt.Printf("🚀 [SMS SİMÜLATÖRÜ] - SAAT: %s\n", time.Now().Format("15:04:05"))
 	fmt.Printf("GÖNDERİLEN NUMARA: %s\n", application.Phone)
@@ -151,5 +168,9 @@ func CheckApplicationStatus(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"has_application": false})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"has_application": true, "status": app.Durum})
+	c.JSON(http.StatusOK, gin.H{
+		"has_application": true,
+		"status":          app.Durum,
+		"application":     app,
+	})
 }

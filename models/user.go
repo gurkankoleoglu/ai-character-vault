@@ -4,24 +4,19 @@ import (
 	"time"
 )
 
-// User: Kullanıcı bilgilerini ve staj tarihlerini tutar
+// User: Sisteme giriş yapan herkesin temel kimlik bilgilerini tutar (Auth tablosu)
 type User struct {
-	ID                 uint   `gorm:"primaryKey" json:"id"`
-	Phone              string `gorm:"unique;not null" json:"phone"`
-	FullNames          string `json:"full_name"`
-	Email              string `json:"email"`
-	Role               string `gorm:"default:'user'" json:"role"`
-	TCNo               string `json:"tc_no"`
-	University         string `json:"university"`
-	Department         string `json:"department"`
-	IsProfileCompleted bool   `gorm:"default:false" json:"is_profile_completed"`
+	ID                 uint      `gorm:"primaryKey" json:"id"`
+	Phone              string    `gorm:"unique;not null" json:"phone"`
+	Email              string    `json:"email"`
+	FullNames          string    `json:"full_name"`                     // Şirket yetkilisi veya öğrencinin adı
+	Role               string    `gorm:"default:'student'" json:"role"` // 'student', 'company', 'admin'
+	IsProfileCompleted bool      `gorm:"default:false" json:"is_profile_completed"`
+	CreatedAt          time.Time `json:"created_at"`
 
-	// STAJ SÜRESİ İÇİN EKLENEN ALANLAR
-	InternStartDate *time.Time `json:"intern_start_date"` // Staj başlangıç tarihi
-	InternEndDate   *time.Time `json:"intern_end_date"`   // Staj bitiş tarihi
-	TotalInternDays int        `json:"total_intern_days"` // Toplam kaç gün staj yapacak (Örn: 40)
-
-	CreatedAt time.Time `json:"created_at"`
+	// İlişkiler (Has-One) - Bir kullanıcının ya öğrenci profili vardır ya da şirket profili
+	StudentProfile *Student `gorm:"foreignKey:UserID" json:"student_profile,omitempty"`
+	CompanyProfile *Company `gorm:"foreignKey:UserID" json:"company_profile,omitempty"`
 }
 
 // DailyReport: Her gün yazılan staj raporlarını tutar
