@@ -157,4 +157,12 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/connect", handlers.SendConnectionRequest)            // İstek At
 	r.PUT("/connect/:id", handlers.RespondConnectionRequest)      // Kabul Et/Reddet
 	r.GET("/connect/pending/:phone", handlers.GetPendingRequests) // Gelen İsteklerimi Gör
+
+	r.POST("/messages", handlers.SendMessage)                    // Mesaj Gönder
+	r.GET("/messages/:phone1/:phone2", handlers.GetConversation) // Sohbet Geçmişini Çek
+
+	// Admin İşlemleri
+	r.GET("/admin/pending", handlers.GetPendingApprovals)
+	r.PUT("/admin/approve-student/:id", handlers.ApproveStudent)
+	r.PUT("/admin/approve-company/:id", handlers.ApproveCompany)
 }
