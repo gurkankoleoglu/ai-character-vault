@@ -9,11 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm" // EKLENMESİ GEREKEN SATIR BURASI
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 // CreateApplication: Yeni başvuru oluşturur ve User/Student tablolarını günceller
+// CreateApplication: Yeni başvuru oluşturur ve ilana bağlar
 func CreateApplication(c *gin.Context) {
 	phone := c.PostForm("phone")
 	adSoyad := c.PostForm("full_name")
@@ -22,28 +25,32 @@ func CreateApplication(c *gin.Context) {
 	bolum := c.PostForm("department")
 	stajTuru := c.PostForm("intern_type")
 	stajTarihleri := c.PostForm("stajTarihleri")
+	jobPostingID := c.PostForm("job_posting_id") // YENİ: Hangi ilana başvuruyor?
 
-	// 1. Mükerrer Başvuru Kontrolü (Beklemede veya Onaylı varsa engelle)
-	var existingApp models.Application
-	if err := config.DB.Where("phone = ? AND durum IN ?", phone, []string{"Beklemede", "Onaylandı"}).First(&existingApp).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Devam eden veya onaylanmış bir başvurunuz zaten var."})
+	if jobPostingID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Lütfen başvurmak istediğiniz ilanı belirtin."})
 		return
 	}
 
-	// 2. Kullanıcı Bilgilerini Güncelle (YENİ MİMARİYE GÖRE AYARLANDI)
+	// 1. Mükerrer Başvuru Kontrolü (YENİ MANTIK)
+	// Artık global bir kontrol değil, "Bu öğrenci BU İLANA daha önce başvurdu mu?" diye bakıyoruz.
+	var existingApp models.Application
+	if err := config.DB.Where("phone = ? AND job_posting_id = ? AND durum IN ?", phone, jobPostingID, []string{"Beklemede", "Onaylandı"}).First(&existingApp).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Bu ilana zaten devam eden veya onaylanmış bir başvurunuz var."})
+		return
+	}
+
+	// 2. Kullanıcı ve Öğrenci Bilgilerini Güncelle
 	var user models.User
 	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err == nil {
-		// Ana User tablosunu güncelle
 		config.DB.Model(&user).Updates(models.User{
 			FullNames:          adSoyad,
 			Email:              email,
 			IsProfileCompleted: true,
 		})
 
-		// Okul ve Bölüm bilgilerini yeni Student tablosuna aktar/güncelle
 		var student models.Student
 		if err := config.DB.Where("user_id = ?", user.ID).First(&student).Error; err != nil {
-			// Öğrenci profili henüz yoksa oluştur
 			student = models.Student{
 				UserID:     user.ID,
 				University: okul,
@@ -51,7 +58,6 @@ func CreateApplication(c *gin.Context) {
 			}
 			config.DB.Create(&student)
 		} else {
-			// Zaten varsa sadece alanları güncelle
 			config.DB.Model(&student).Updates(models.Student{
 				University: okul,
 				Department: bolum,
@@ -75,6 +81,9 @@ func CreateApplication(c *gin.Context) {
 		c.SaveUploadedFile(letterFile, letterPath)
 	}
 
+	// JobPostingID'yi string'den uint'e çevirmiyoruz, GORM otomatik mapleyebilir,
+	// ama en sağlıklısı veritabanına kaydederken arayüze paslamak:
+
 	// 4. Başvuruyu Kaydet
 	app := models.Application{
 		FullNames:      adSoyad,
@@ -92,12 +101,24 @@ func CreateApplication(c *gin.Context) {
 		Durum:          "Beklemede",
 	}
 
+	// GORM'un formdan gelen string ID'yi uint'e otomatik cast etmesi için Query bazlı update de yapabiliriz,
+	// ama struct'ı doğrudan DB'ye yazmadan önce DB'de o ilanı bulalım:
+	var job models.JobPosting
+	if err := config.DB.First(&job, jobPostingID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Başvurulmak istenen ilan bulunamadı veya yayından kaldırılmış."})
+		return
+	}
+	app.JobPostingID = job.ID // ID'yi güvenli bir şekilde atadık
+
 	if err := config.DB.Create(&app).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Veritabanı hatası"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Başvurunuz alındı, onay bekleniyor.", "status": "Beklemede"})
+	// 5. İlanın "Başvuru Sayısını" (ApplicationCount) 1 artır
+	config.DB.Model(&job).UpdateColumn("application_count", gorm.Expr("application_count + ?", 1))
+
+	c.JSON(http.StatusOK, gin.H{"message": "Başvurunuz alındı, şirket onayı bekleniyor.", "status": "Beklemede"})
 }
 
 // UpdateApplicationStatus: Admin Onay/Red yaptığında çalışır ve KONSOLA SMS BASAR

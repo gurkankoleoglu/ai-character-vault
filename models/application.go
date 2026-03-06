@@ -6,14 +6,18 @@ import (
 
 type Application struct {
 	gorm.Model
-	FullNames      string `json:"full_name"` // React tarafında full_name bekliyoruz
+	// YENİ EKLENEN: Başvurunun hangi ilana yapıldığını tutar
+	JobPostingID uint       `json:"job_posting_id"`
+	JobPosting   JobPosting `gorm:"foreignKey:JobPostingID" json:"job_posting"`
+
+	FullNames      string `json:"full_name"`
 	Email          string `json:"email"`
-	Phone          string `json:"phone"`                           // telefon -> phone (tutarlılık için)
-	University     string `json:"university"`                      // okul -> university
-	Department     string `json:"department"`                      // bolum -> department
-	InternshipType string `json:"intern_type"`                     // stajTuru -> intern_type
-	Durum          string `json:"status" gorm:"default:Beklemede"` // durum -> status
-	StajTarihleri  string `json:"stajTarihleri"`                   // YENİ EKLENDİ: Başvuru tarihlerini tutacak
+	Phone          string `json:"phone"`
+	University     string `json:"university"`
+	Department     string `json:"department"`
+	InternshipType string `json:"intern_type"`
+	StajTarihleri  string `json:"stajTarihleri"`
+	Durum          string `json:"status" gorm:"default:Beklemede"`
 
 	CVUUID     string `json:"cv_uuid"`
 	CVPath     string `json:"cv_path"`
