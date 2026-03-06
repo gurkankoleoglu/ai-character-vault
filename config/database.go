@@ -30,6 +30,7 @@ func InitDatabase() {
 		&models.OTP{},
 		&models.Application{},
 		&models.JobPosting{},
+		&models.Post{},
 		&models.ContactMessage{},
 		&models.DailyReport{},
 		&models.Announcement{},

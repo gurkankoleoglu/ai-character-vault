@@ -150,4 +150,7 @@ func SetupRoutes(r *gin.Engine) {
 
 	r.POST("/jobs", handlers.CreateJob)
 	r.GET("/jobs", handlers.GetAllJobs)
+
+	r.POST("/posts", handlers.CreatePost)
+	r.GET("/feed", handlers.GetFeed)
 }
