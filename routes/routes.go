@@ -165,4 +165,8 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/admin/pending", handlers.GetPendingApprovals)
 	r.PUT("/admin/approve-student/:id", handlers.ApproveStudent)
 	r.PUT("/admin/approve-company/:id", handlers.ApproveCompany)
+
+	// Şirket - Stajyer Raporları İzleme
+	r.GET("/company/:phone/interns", handlers.GetCompanyInterns)
+	r.GET("/company/:phone/interns/:intern_user_id/reports", handlers.GetCompanyInternReports)
 }

@@ -193,4 +193,61 @@ func DeleteReport(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Rapor başarıyla silindi"})
+
+}
+
+// GetCompanyInterns: Şirketin sadece kendi ilanlarından onayladığı stajyerleri listeler
+func GetCompanyInterns(c *gin.Context) {
+	companyPhone := c.Param("phone")
+
+	// Şirketi bul
+	var user models.User
+	if err := config.DB.Where("phone = ? AND role = 'company'", companyPhone).Preload("CompanyProfile").First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Yetkisiz erişim veya şirket bulunamadı"})
+		return
+	}
+
+	if user.CompanyProfile == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Şirket profili bulunamadı"})
+		return
+	}
+
+	var applications []models.Application
+	// İZOLASYON: Sadece bu şirketin açtığı ilanlara (JobPosting) yapılan ve "Onaylandı" durumundaki başvuruları çek
+	config.DB.Preload("JobPosting").
+		Joins("JOIN job_postings ON job_postings.id = applications.job_posting_id").
+		Where("job_postings.company_id = ? AND applications.durum = ?", user.CompanyProfile.ID, "Onaylandı").
+		Find(&applications)
+
+	c.JSON(http.StatusOK, applications)
+}
+
+// GetCompanyInternReports: Şirketin kendi stajyerinin günlük raporlarını okuması
+func GetCompanyInternReports(c *gin.Context) {
+	companyPhone := c.Param("phone")
+	internUserID := c.Param("intern_user_id") // Raporları okunacak öğrencinin User ID'si
+
+	// 1. Şirketi bul
+	var user models.User
+	if err := config.DB.Where("phone = ?", companyPhone).Preload("CompanyProfile").First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Yetkisiz erişim"})
+		return
+	}
+
+	// 2. GÜVENLİK KONTROLÜ: Bu öğrenci gerçekten BU şirketin stajyeri mi?
+	var app models.Application
+	err := config.DB.Joins("JOIN job_postings ON job_postings.id = applications.job_posting_id").
+		Where("job_postings.company_id = ? AND applications.user_id = ? AND applications.durum = ?", user.CompanyProfile.ID, internUserID, "Onaylandı").
+		First(&app).Error
+
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Erişim engellendi: Bu öğrenci sizin onaylı stajyeriniz değil!"})
+		return
+	}
+
+	// 3. Güvenlikten geçtiyse raporları getir (Eskiden yeniye sıralı)
+	var reports []models.DailyReport
+	config.DB.Where("user_id = ?", internUserID).Order("date DESC").Find(&reports)
+
+	c.JSON(http.StatusOK, reports)
 }
