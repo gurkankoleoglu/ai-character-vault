@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// RequestOTP: Kullanıcı telefon girince OTP üretir ve DB'ye kaydeder
+// RequestOTP: Kullanıcı telefon girince durumu kontrol eder, onaylı değilse OTP göndermez
 func RequestOTP(c *gin.Context) {
 	type Request struct {
 		Phone string `json:"phone" binding:"required"`
@@ -29,7 +29,7 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
-	// YENİ GÜVENLİK KONTROLÜ: Sadece adminler veya "Onaylandı" durumunda başvurusu olanlar giriş yapabilir.
+	// 1. ADMIN VE BAŞVURU KONTROLÜ
 	var user models.User
 	isAdmin := false
 	if err := config.DB.Where("phone = ?", req.Phone).First(&user).Error; err == nil && user.Role == "admin" {
@@ -38,13 +38,23 @@ func RequestOTP(c *gin.Context) {
 
 	if !isAdmin {
 		var app models.Application
-		if err := config.DB.Where("phone = ? AND durum = ?", req.Phone, "Onaylandı").First(&app).Error; err != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Sadece başvurusu onaylanan stajyerler giriş yapabilir."})
+		if err := config.DB.Where("phone = ?", req.Phone).Order("created_at desc").First(&app).Error; err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Henüz bir başvurunuz bulunmamaktadır. Lütfen önce başvuru yapınız."})
+			return
+		}
+
+		// ⭐ STATICCHECK UYARISINI GİDEREN SWITCH YAPISI (QF1003)
+		switch app.Durum {
+		case "Beklemede":
+			c.JSON(http.StatusForbidden, gin.H{"error": "Başvurunuz henüz değerlendirme aşamasındadır. Onaylandıktan sonra giriş yapabilirsiniz."})
+			return
+		case "Reddedildi":
+			c.JSON(http.StatusForbidden, gin.H{"error": "Başvurunuz reddedilmiştir. Sisteme giriş yetkiniz bulunmamaktadır."})
 			return
 		}
 	}
 
-	// Spam kontrolü
+	// 2. SPAM KONTROLÜ
 	var lastOTP models.OTP
 	err := config.DB.Where("phone = ?", req.Phone).Order("created_at DESC").First(&lastOTP).Error
 	if err == nil && time.Since(lastOTP.CreatedAt) < 60*time.Second {
@@ -52,8 +62,9 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
+	// 3. OTP ÜRETME
 	otpCode := utils.GenerateOTP()
-	fmt.Printf("\n🚀 YENİ OTP -> Tel: %s | Kod: %s\n", req.Phone, otpCode)
+	fmt.Printf("\n🚀 [SMS SİMÜLASYONU] -> Tel: %s | Kod: %s\n", req.Phone, otpCode)
 
 	hashedCode, _ := bcrypt.GenerateFromPassword([]byte(otpCode), bcrypt.DefaultCost)
 	otp := models.OTP{
@@ -67,7 +78,7 @@ func RequestOTP(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Doğrulama kodu oluşturuldu.", "otp": otpCode})
 }
 
-// VerifyOTP: Kod doğrulama sonrası kullanıcı durumunu kontrol eder
+// VerifyOTP: Kod doğrulama sonrası kullanıcıyı sisteme alır
 func VerifyOTP(c *gin.Context) {
 	type Request struct {
 		Phone string `json:"phone" binding:"required"`
@@ -83,7 +94,7 @@ func VerifyOTP(c *gin.Context) {
 	var otp models.OTP
 	err := config.DB.Where("phone = ? AND is_used = ?", req.Phone, false).Order("created_at DESC").First(&otp).Error
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Geçerli kod bulunamadı"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Geçerli bir kod bulunamadı"})
 		return
 	}
 
@@ -93,7 +104,7 @@ func VerifyOTP(c *gin.Context) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(otp.Code), []byte(req.Code)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Hatalı kod"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Hatalı kod girdiniz"})
 		return
 	}
 
@@ -104,15 +115,11 @@ func VerifyOTP(c *gin.Context) {
 	isNewUser := false
 
 	if err := config.DB.Where("phone = ?", req.Phone).First(&user).Error; err != nil {
-		// Kayıtlı kullanıcı yoksa oluştur
 		user = models.User{Phone: req.Phone, Role: "user"}
 		config.DB.Create(&user)
 		isNewUser = true
-	} else {
-		// Veritabanında var ama isim/soyisim girilmemişse yeni sayılır
-		if user.FullNames == "" {
-			isNewUser = true
-		}
+	} else if user.FullNames == "" {
+		isNewUser = true
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -124,7 +131,7 @@ func VerifyOTP(c *gin.Context) {
 	})
 }
 
-// CompleteProfile: Frontend'den gelen profil bilgilerini kaydeder
+// CompleteProfile: Profil bilgilerini günceller
 func CompleteProfile(c *gin.Context) {
 	type ProfileUpdateRequest struct {
 		Phone      string `json:"phone" binding:"required"`
@@ -133,8 +140,8 @@ func CompleteProfile(c *gin.Context) {
 		Email      string `json:"email"`
 		University string `json:"university"`
 		Department string `json:"department"`
-		InternType string `json:"intern_type"` // Staj Tipi eklendi
-		Gender     string `json:"gender"`      // Cinsiyet eklendi
+		InternType string `json:"intern_type"`
+		Gender     string `json:"gender"`
 	}
 
 	var req ProfileUpdateRequest
@@ -149,7 +156,6 @@ func CompleteProfile(c *gin.Context) {
 		return
 	}
 
-	// Dataset alanlarını güncelle
 	user.FullNames = req.FullName
 	user.Email = req.Email
 	user.TCNo = req.TCKimlik
@@ -157,25 +163,17 @@ func CompleteProfile(c *gin.Context) {
 	user.Department = req.Department
 	user.IsProfileCompleted = true
 
-	if err := config.DB.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Veritabanı güncelleme hatası"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Profil başarıyla güncellendi", "user": user})
+	config.DB.Save(&user)
+	c.JSON(http.StatusOK, gin.H{"message": "Profil güncellendi", "user": user})
 }
 
-// GetUserByPhone: Belirtilen telefon numarasına sahip kullanıcının tüm bilgilerini döner
+// GetUserByPhone: Tekil kullanıcı bilgisini getirir
 func GetUserByPhone(c *gin.Context) {
 	phone := c.Param("phone")
 	var user models.User
-
-	// Frontend'in (Hesap Bilgileri ekranı) verileri doğru çekmesi için ana sorgu
 	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı veritabanında bulunamadı"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
 		return
 	}
-
-	// Dataset'ten gelen ham veriyi döndürür
 	c.JSON(http.StatusOK, user)
 }

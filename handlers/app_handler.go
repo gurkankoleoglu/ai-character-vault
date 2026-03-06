@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"stajyer-backend/config"
 	"stajyer-backend/models"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-// CreateApplication: Başvuru oluşturur ve User tablosundaki profil bilgilerini senkronize eder
+// CreateApplication: Yeni başvuru oluşturur ve User tablosunu günceller
 func CreateApplication(c *gin.Context) {
 	phone := c.PostForm("phone")
 	adSoyad := c.PostForm("full_name")
@@ -19,29 +21,18 @@ func CreateApplication(c *gin.Context) {
 	okul := c.PostForm("university")
 	bolum := c.PostForm("department")
 	stajTuru := c.PostForm("intern_type")
-	stajTarihleri := c.PostForm("stajTarihleri") // YENİ EKLENDİ: Formdan tarih bilgisini çekiyoruz
+	stajTarihleri := c.PostForm("stajTarihleri")
 
-	// 1. Mükerrer Başvuru Kontrolü
-	// "Reddedildi" olanlar bu sorguya takılmaz ve yeni başvuruya izin verilir.
+	// 1. Mükerrer Başvuru Kontrolü (Beklemede veya Onaylı varsa engelle)
 	var existingApp models.Application
 	if err := config.DB.Where("phone = ? AND durum IN ?", phone, []string{"Beklemede", "Onaylandı"}).First(&existingApp).Error; err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Bu telefon numarası ile devam eden veya onaylanmış bir başvurunuz bulunmaktadır."})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Devam eden veya onaylanmış bir başvurunuz zaten var."})
 		return
 	}
 
-	// 2. Kullanıcı Kontrolü ve Profil Bilgilerini Güncelleme
+	// 2. Kullanıcı Bilgilerini Güncelle (Dashboard için Senkronizasyon)
 	var user models.User
-	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
-		user = models.User{
-			Phone:              phone,
-			FullNames:          adSoyad,
-			Email:              email,
-			University:         okul,
-			Department:         bolum,
-			IsProfileCompleted: true,
-		}
-		config.DB.Create(&user)
-	} else {
+	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err == nil {
 		config.DB.Model(&user).Updates(models.User{
 			FullNames:          adSoyad,
 			Email:              email,
@@ -51,28 +42,23 @@ func CreateApplication(c *gin.Context) {
 		})
 	}
 
-	// 3. Dosya İşlemleri (CV ve Motivasyon Mektubu)
+	// 3. Dosya Kaydetme (CV ve Mektup)
 	cvFile, _ := c.FormFile("cv_file")
 	letterFile, _ := c.FormFile("letter_file")
-
 	var cvUUID, cvPath, letterUUID, letterPath string
 
 	if cvFile != nil {
 		cvUUID = uuid.New().String()
 		cvPath = filepath.ToSlash(filepath.Join("uploads", fmt.Sprintf("cv_%s%s", cvUUID, filepath.Ext(cvFile.Filename))))
-		if err := c.SaveUploadedFile(cvFile, cvPath); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "CV kaydedilemedi"})
-			return
-		}
+		c.SaveUploadedFile(cvFile, cvPath)
 	}
-
 	if letterFile != nil {
 		letterUUID = uuid.New().String()
 		letterPath = filepath.ToSlash(filepath.Join("uploads", fmt.Sprintf("letter_%s%s", letterUUID, filepath.Ext(letterFile.Filename))))
 		c.SaveUploadedFile(letterFile, letterPath)
 	}
 
-	// 4. Başvuru Kaydı Oluşturma
+	// 4. Başvuruyu Kaydet
 	app := models.Application{
 		FullNames:      adSoyad,
 		Email:          email,
@@ -80,7 +66,7 @@ func CreateApplication(c *gin.Context) {
 		University:     okul,
 		Department:     bolum,
 		InternshipType: stajTuru,
-		StajTarihleri:  stajTarihleri, // YENİ EKLENDİ: Tarihleri veritabanı modeline atıyoruz
+		StajTarihleri:  stajTarihleri,
 		CVUUID:         cvUUID,
 		CVPath:         cvPath,
 		LetterUUID:     letterUUID,
@@ -90,75 +76,80 @@ func CreateApplication(c *gin.Context) {
 	}
 
 	if err := config.DB.Create(&app).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Başvuru veritabanına kaydedilemedi"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Veritabanı hatası"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Başvuru başarıyla tamamlandı!",
-		"status":  "Beklemede",
-		"user_id": user.ID,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Başvurunuz alındı, onay bekleniyor.", "status": "Beklemede"})
 }
 
-// GetApplications: Admin paneli için tüm başvuruları getirir
-func GetApplications(c *gin.Context) {
-	var apps []models.Application
-	if err := config.DB.Order("created_at desc").Find(&apps).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Veriler çekilemedi"})
-		return
-	}
-	c.JSON(http.StatusOK, apps)
-}
-
-// GetApplicationDetail: Tek bir başvurunun detayını getirir
-func GetApplicationDetail(c *gin.Context) {
+// UpdateApplicationStatus: Admin Onay/Red yaptığında çalışır ve KONSOLA SMS BASAR
+func UpdateApplicationStatus(c *gin.Context) {
 	id := c.Param("id")
+	status := c.Query("status") // Onaylandı veya Reddedildi
+
 	var application models.Application
 	if err := config.DB.First(&application, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Başvuru bulunamadı"})
 		return
 	}
-	c.JSON(http.StatusOK, application)
-}
 
-// UpdateApplicationStatus: Adminin onay/ret işlemini gerçekleştirir
-func UpdateApplicationStatus(c *gin.Context) {
-	id := c.Param("id")
-	status := c.Query("status") // ?status=Onaylandı gibi
-
-	if err := config.DB.Model(&models.Application{}).Where("id = ?", id).Update("durum", status).Error; err != nil {
+	// Veritabanı Güncelleme
+	if err := config.DB.Model(&application).Update("durum", status).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Durum güncellenemedi"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Durum güncellendi", "new_status": status})
+
+	// 📱 SMS SİMÜLATÖRÜ - TERMİNAL ÇIKTISI (Switch yapısı ile optimize edildi)
+	fmt.Println("\n" + strings.Repeat("*", 60))
+	fmt.Printf("🚀 [SMS SİMÜLATÖRÜ] - SAAT: %s\n", time.Now().Format("15:04:05"))
+	fmt.Printf("GÖNDERİLEN NUMARA: %s\n", application.Phone)
+
+	switch status {
+	case "Onaylandı":
+		fmt.Printf("MESAJ: Sayın %s, staj başvurunuz ONAYLANMIŞTIR. Artık giriş yapabilirsiniz. ✅\n", application.FullNames)
+	case "Reddedildi":
+		fmt.Printf("MESAJ: Sayın %s, staj başvurunuz maalesef REDDEDİLMİŞTİR. Giriş yetkiniz bulunmamaktadır. ❌\n", application.FullNames)
+	default:
+		fmt.Printf("MESAJ: Sayın %s, başvurunuzun durumu güncellendi: %s\n", application.FullNames, status)
+	}
+	fmt.Println(strings.Repeat("*", 60) + "\n")
+
+	c.JSON(http.StatusOK, gin.H{"message": "Durum güncellendi ve kullanıcı bilgilendirildi.", "new_status": status})
+}
+
+// GetApplications: Tüm başvuruları listeler
+func GetApplications(c *gin.Context) {
+	var apps []models.Application
+	config.DB.Order("created_at desc").Find(&apps)
+	c.JSON(http.StatusOK, apps)
+}
+
+// GetApplicationDetail: Detay getirir
+func GetApplicationDetail(c *gin.Context) {
+	id := c.Param("id")
+	var app models.Application
+	if err := config.DB.First(&app, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Bulunamadı"})
+		return
+	}
+	c.JSON(http.StatusOK, app)
 }
 
 // DeleteApplication: Başvuruyu siler
 func DeleteApplication(c *gin.Context) {
 	id := c.Param("id")
-	if err := config.DB.Delete(&models.Application{}, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Silme hatası"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Başvuru silindi"})
+	config.DB.Delete(&models.Application{}, id)
+	c.JSON(http.StatusOK, gin.H{"message": "Silindi"})
 }
 
-// CheckApplicationStatus: Kullanıcının başvuru durumunu telefon numarasına göre döndürür
+// CheckApplicationStatus: Telefon ile durum sorgular
 func CheckApplicationStatus(c *gin.Context) {
 	phone := c.Param("phone")
 	var app models.Application
-
 	if err := config.DB.Where("phone = ?", phone).Order("created_at desc").First(&app).Error; err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"has_application": false,
-			"status":          nil,
-		})
+		c.JSON(http.StatusOK, gin.H{"has_application": false})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"has_application": true,
-		"status":          app.Durum,
-	})
+	c.JSON(http.StatusOK, gin.H{"has_application": true, "status": app.Durum})
 }
