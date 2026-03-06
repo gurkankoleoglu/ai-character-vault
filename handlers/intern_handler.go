@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"stajyer-backend/config"
 	"stajyer-backend/models"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,16 +14,16 @@ import (
 // GetInternProgress: Kullanıcının staj tarihlerine göre kalan gün ve yüzde hesaplar
 func GetInternProgress(c *gin.Context) {
 	phone := c.Param("phone")
-	var user models.User
 
-	// Kullanıcıyı veritabanından bul
-	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
+	// 1. Önce "Onaylandı" durumundaki başvuruyu buluyoruz (Tarihler bu tabloda)
+	var app models.Application
+	if err := config.DB.Where("phone = ? AND durum = ?", phone, "Onaylandı").First(&app).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Onaylanmış başvuru bulunamadı"})
 		return
 	}
 
-	// Eğer staj tarihleri henüz girilmemişse (nil ise) varsayılan değerler dön
-	if user.InternStartDate == nil || user.InternEndDate == nil {
+	// 2. Tarih verisi boş mu kontrol et
+	if app.StajTarihleri == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"remaining_days": 0,
 			"elapsed_days":   0,
@@ -31,18 +33,47 @@ func GetInternProgress(c *gin.Context) {
 		return
 	}
 
+	// 3. String formatındaki tarihi "15.02.2026 - 15.05.2026" bölüyoruz
+	dates := strings.Split(app.StajTarihleri, " - ")
+	if len(dates) != 2 {
+		c.JSON(http.StatusOK, gin.H{
+			"remaining_days": 0,
+			"elapsed_days":   0,
+			"percentage":     0,
+			"message":        "Tarih formatı hatalı",
+		})
+		return
+	}
+
+	// Go'da tarih parse etmek için referans format: "02.01.2006"
+	layout := "02.01.2006"
+	startDate, err1 := time.Parse(layout, strings.TrimSpace(dates[0]))
+	endDate, err2 := time.Parse(layout, strings.TrimSpace(dates[1]))
+
+	if err1 != nil || err2 != nil {
+		fmt.Println("Tarih parse hatası:", err1, err2)
+		c.JSON(http.StatusOK, gin.H{
+			"remaining_days": 0,
+			"elapsed_days":   0,
+			"percentage":     0,
+			"message":        "Tarih ayrıştırma hatası",
+		})
+		return
+	}
+
 	now := time.Now()
 
 	// Kalan gün hesabı (Bitiş Tarihi - Bugün)
-	remaining := int(user.InternEndDate.Sub(now).Hours() / 24)
+	remaining := int(endDate.Sub(now).Hours() / 24)
 	if remaining < 0 {
 		remaining = 0
 	}
 
 	// Toplam staj süresi ve geçen süre (Gün bazında)
-	totalDuration := user.InternEndDate.Sub(*user.InternStartDate).Hours() / 24
-	elapsed := now.Sub(*user.InternStartDate).Hours() / 24
+	totalDuration := endDate.Sub(startDate).Hours() / 24
+	elapsed := now.Sub(startDate).Hours() / 24
 
+	// Eğer staj henüz başlamadıysa geçen süreyi sıfırla
 	if elapsed < 0 {
 		elapsed = 0
 	}
