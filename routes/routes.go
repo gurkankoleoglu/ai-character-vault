@@ -153,4 +153,8 @@ func SetupRoutes(r *gin.Engine) {
 
 	r.POST("/posts", handlers.CreatePost)
 	r.GET("/feed", handlers.GetFeed)
+
+	r.POST("/connect", handlers.SendConnectionRequest)            // İstek At
+	r.PUT("/connect/:id", handlers.RespondConnectionRequest)      // Kabul Et/Reddet
+	r.GET("/connect/pending/:phone", handlers.GetPendingRequests) // Gelen İsteklerimi Gör
 }

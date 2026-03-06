@@ -31,6 +31,7 @@ func InitDatabase() {
 		&models.Application{},
 		&models.JobPosting{},
 		&models.Post{},
+		&models.Connection{},
 		&models.ContactMessage{},
 		&models.DailyReport{},
 		&models.Announcement{},
