@@ -3,17 +3,18 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"stajyer-backend/config"
 	"stajyer-backend/models"
 	"stajyer-backend/utils"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
-// RequestOTP: Herkes için (Şirket, Öğrenci, Admin) giriş kapısı. Başvuru zorunluluğu KALDIRILDI.
+// RequestOTP: Herkes için (Şirket, Öğrenci, Admin) giriş kapısı.
 func RequestOTP(c *gin.Context) {
 	type Request struct {
 		Phone string `json:"phone" binding:"required"`
@@ -92,7 +93,7 @@ func VerifyOTP(c *gin.Context) {
 
 	// Kullanıcı yoksa varsayılan olarak "student" oluştur
 	if err := config.DB.Where("phone = ?", req.Phone).Preload("StudentProfile").Preload("CompanyProfile").First(&user).Error; err != nil {
-		user = models.User{Phone: req.Phone, Role: "student"} // Şirketleri admin panelinden ekleyebiliriz
+		user = models.User{Phone: req.Phone, Role: "student"}
 		config.DB.Create(&user)
 		isNewUser = true
 	} else if user.FullNames == "" {
@@ -108,89 +109,96 @@ func VerifyOTP(c *gin.Context) {
 	})
 }
 
-// CompleteProfile: YENİ MİMARİ. Kullanıcının rolüne göre alt tabloları doldurur.
+// CompleteProfile: YENİ MİMARİ. Kullanıcının rolüne göre alt tabloları doldurur (Dosya Yükleme ve Upsert Destekli)
 func CompleteProfile(c *gin.Context) {
-	type ProfileUpdateRequest struct {
-		Phone string `json:"phone" binding:"required"`
-		// Ortak
-		FullName string `json:"full_name"`
-		Email    string `json:"email"`
-		Role     string `json:"role"` // Frontend'den form tipini (öğrenci mi şirket mi) anlamak için
+	phone := c.PostForm("phone")
+	role := c.PostForm("role")
+	email := c.PostForm("email")
 
-		// Sadece Öğrenci
-		TCKimlik   string `json:"tc_kimlik"`
-		University string `json:"university"`
-		Department string `json:"department"`
-
-		// Sadece Şirket
-		CompanyName string `json:"company_name"`
-		TaxNumber   string `json:"tax_number"`
-		Industry    string `json:"industry"`
-	}
-
-	var req ProfileUpdateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Veri formatı hatalı"})
+	if phone == "" || role == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Telefon ve rol bilgisi zorunludur"})
 		return
 	}
 
+	// 1. KULLANICIYI BUL VEYA SIFIRDAN YARAT (Upsert Mantığı)
 	var user models.User
-	if err := config.DB.Where("phone = ?", req.Phone).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
-		return
+	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
+		// Veritabanında yoksa sıfırdan oluştur
+		user = models.User{
+			Phone:              phone,
+			Role:               role,
+			Email:              email,
+			IsProfileCompleted: true,
+		}
+		if err := config.DB.Create(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Kullanıcı hesabı oluşturulamadı"})
+			return
+		}
+	} else {
+		// Varsa bilgilerini güncelle
+		user.Email = email
+		user.Role = role
+		user.IsProfileCompleted = true
+		config.DB.Save(&user)
 	}
 
-	// Ana kullanıcı tablosunu güncelle
-	user.FullNames = req.FullName
-	user.Email = req.Email
-	user.IsProfileCompleted = true
+	// 2. ROL BAZLI ALT TABLOLARI DOLDUR
+	// Rol Öğrenci ise:
+	if role == "student" {
+		user.FullNames = c.PostForm("full_name")
+		config.DB.Save(&user) // Öğrencinin adını ana tabloya da kaydet
 
-	// Kullanıcının rolünü güncelle (Eğer öğrenci/şirket seçim ekranından geliyorsa)
-	if req.Role != "" {
-		user.Role = req.Role
-	}
-	config.DB.Save(&user)
+		// Dosya Yükleme İşlemi (Öğrenci Belgesi)
+		file, _ := c.FormFile("student_document")
+		var filePath string
+		if file != nil {
+			fileUUID := uuid.New().String()
+			filePath = filepath.ToSlash(filepath.Join("uploads", fmt.Sprintf("cert_%s%s", fileUUID, filepath.Ext(file.Filename))))
+			c.SaveUploadedFile(file, filePath)
+		}
 
-	// Alt tablolara verileri yaz
-	if user.Role == "student" {
 		var student models.Student
 		if err := config.DB.Where("user_id = ?", user.ID).First(&student).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				student = models.Student{
-					UserID:     user.ID,
-					TCNo:       req.TCKimlik,
-					University: req.University,
-					Department: req.Department,
-				}
-				config.DB.Create(&student)
+			// Öğrenci profili yoksa yarat
+			student = models.Student{
+				UserID:         user.ID,
+				TCNo:           c.PostForm("tc_no"),
+				University:     c.PostForm("university"),
+				Department:     c.PostForm("department"),
+				StudentCertUrl: filePath, // Yüklenen dosyanın yolu
 			}
+			config.DB.Create(&student)
 		} else {
-			student.TCNo = req.TCKimlik
-			student.University = req.University
-			student.Department = req.Department
+			// Öğrenci profili varsa güncelle
+			student.TCNo = c.PostForm("tc_no")
+			student.University = c.PostForm("university")
+			student.Department = c.PostForm("department")
+			if filePath != "" {
+				student.StudentCertUrl = filePath // Sadece yeni dosya yüklendiyse güncelle
+			}
 			config.DB.Save(&student)
 		}
-	} else if user.Role == "company" {
+
+		// Rol Şirket ise:
+	} else if role == "company" {
 		var company models.Company
 		if err := config.DB.Where("user_id = ?", user.ID).First(&company).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				company = models.Company{
-					UserID:      user.ID,
-					CompanyName: req.CompanyName,
-					TaxNumber:   req.TaxNumber,
-					Industry:    req.Industry,
-				}
-				config.DB.Create(&company)
+			company = models.Company{
+				UserID:      user.ID,
+				CompanyName: c.PostForm("company_name"),
+				TaxNumber:   c.PostForm("tax_number"),
+				Industry:    c.PostForm("sector"), // Frontend'den gelen 'sector' verisi
 			}
+			config.DB.Create(&company)
 		} else {
-			company.CompanyName = req.CompanyName
-			company.TaxNumber = req.TaxNumber
-			company.Industry = req.Industry
+			company.CompanyName = c.PostForm("company_name")
+			company.TaxNumber = c.PostForm("tax_number")
+			company.Industry = c.PostForm("sector")
 			config.DB.Save(&company)
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Profil güncellendi"})
+	c.JSON(http.StatusOK, gin.H{"message": "Profil başarıyla güncellendi"})
 }
 
 // GetUserByPhone: Kullanıcının genel ve rolüne ait detaylarını getirir
