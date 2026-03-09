@@ -1,9 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"stajyer-backend/models"
 
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -11,22 +14,36 @@ import (
 var DB *gorm.DB
 
 func InitDatabase() {
-	//push yapılacağı zaman commentli yer açılacak,açık olan yer silinecek
-	dsn := "host=6.tcp.eu.ngrok.io user=postgres password=Canan3905. dbname=stajyer_auth port=10931 sslmode=disable"
-	//dsn := "host=192.168.1.23 user=postgres password=Canan3905. dbname=stajyer_auth port=5432 sslmode=disable"
+	// 1. .env dosyasını yükle. Eğer dosya yoksa hata vermez ama uyarı logu basar.
+	// Production ortamlarında genellikle sistem değişkenleri kullanılır.
+	err := godotenv.Load()
+	if err != nil {
+		log.Println(".env dosyası yüklenemedi (Sistem çevresel değişkenleri kullanılıyor olabilir)")
+	}
 
-	var err error
+	// 2. Değişkenleri .env dosyasından çek
+	host := os.Getenv("DB_HOST")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbname := os.Getenv("DB_NAME")
+	port := os.Getenv("DB_PORT")
+	sslmode := os.Getenv("DB_SSLMODE")
+
+	// 3. Bağlantı dizesini dinamik oluştur
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+		host, user, password, dbname, port, sslmode)
+
+	// 4. Veritabanı bağlantısını başlat
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Veritabanına bağlanılamadı:", err)
 	}
 
 	// Tabloları otomatik oluştur (Migration)
-	// YENİ EKLENEN: Öğrenci ve Şirket tabloları buraya dahil edildi
 	err = DB.AutoMigrate(
 		&models.User{},
-		&models.Student{}, // EKLENDİ
-		&models.Company{}, // EKLENDİ
+		&models.Student{},
+		&models.Company{},
 		&models.OTP{},
 		&models.Application{},
 		&models.JobPosting{},
@@ -42,5 +59,5 @@ func InitDatabase() {
 		log.Fatal("Migration hatası:", err)
 	}
 
-	log.Println("Veritabanı bağlantısı ve migration (Student ve Company dahil) başarılı.")
+	log.Println("Veritabanı bağlantısı ve migration (Tüm tablolar dahil) başarılı.")
 }
