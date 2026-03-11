@@ -15,11 +15,11 @@ func CreateJob(c *gin.Context) {
 		Title        string `json:"title" binding:"required"`
 		Quota        int    `json:"quota"`
 		Location     string `json:"location"`
-		Type         string `json:"type"`     // Frontend'in gönderdiği çalışma tipi
-		Category     string `json:"category"` // Frontend'in gönderdiği kategori (staj/iş)
+		Type         string `json:"type"`
+		Category     string `json:"category"`
 		Details      string `json:"details"`
 		Requirements string `json:"requirements"`
-		Benefits     string `json:"benefits"` // Frontend'in gönderdiği imkanlar
+		Benefits     string `json:"benefits"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -38,14 +38,13 @@ func CreateJob(c *gin.Context) {
 		return
 	}
 
-	// YENİ ALANLARLA BİRLİKTE VERİTABANINA KAYIT
 	job := models.JobPosting{
 		CompanyID:      user.CompanyProfile.ID,
 		Title:          req.Title,
 		Description:    req.Details,
 		Requirements:   req.Requirements,
-		Benefits:       req.Benefits, // Yeni eklendi
-		WorkType:       req.Type,     // Yeni eklendi
+		Benefits:       req.Benefits,
+		WorkType:       req.Type,
 		InternshipType: req.Category,
 		Capacity:       req.Quota,
 		Location:       req.Location,
@@ -79,8 +78,8 @@ func GetAllJobs(c *gin.Context) {
 			"title":           job.Title,
 			"description":     job.Description,
 			"requirements":    job.Requirements,
-			"benefits":        job.Benefits, // Yeni eklendi
-			"work_type":       job.WorkType, // Yeni eklendi
+			"benefits":        job.Benefits,
+			"work_type":       job.WorkType,
 			"internship_type": job.InternshipType,
 			"capacity":        job.Capacity,
 			"location":        job.Location,
@@ -95,4 +94,64 @@ func GetAllJobs(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// YENİ: İlan Güncelleme (Update)
+func UpdateJob(c *gin.Context) {
+	jobID := c.Param("id")
+	var req struct {
+		Title        string `json:"title" binding:"required"`
+		Quota        int    `json:"quota"`
+		Location     string `json:"location"`
+		Type         string `json:"type"`
+		Category     string `json:"category"`
+		Details      string `json:"details"`
+		Requirements string `json:"requirements"`
+		Benefits     string `json:"benefits"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Geçersiz veri formatı"})
+		return
+	}
+
+	var job models.JobPosting
+	if err := config.DB.First(&job, jobID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "İlan bulunamadı"})
+		return
+	}
+
+	job.Title = req.Title
+	job.Description = req.Details
+	job.Requirements = req.Requirements
+	job.Benefits = req.Benefits
+	job.WorkType = req.Type
+	job.InternshipType = req.Category
+	job.Capacity = req.Quota
+	job.Location = req.Location
+
+	if err := config.DB.Save(&job).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "İlan güncellenemedi"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "İlan başarıyla güncellendi"})
+}
+
+// YENİ: İlan Silme (Delete) - KESİN VE FİZİKSEL SİLME (Unscoped)
+func DeleteJob(c *gin.Context) {
+	jobID := c.Param("id")
+
+	// 1. ADIM: Başvuruları KALICI OLARAK veritabanından kazı (Unscoped)
+	if err := config.DB.Unscoped().Where("job_posting_id = ?", jobID).Delete(&models.Application{}).Error; err != nil {
+		// Hata olsa bile devam et (Belki başvuru hiç yoktur)
+	}
+
+	// 2. ADIM: İlanın kendisini KALICI OLARAK sil (Unscoped)
+	if err := config.DB.Unscoped().Delete(&models.JobPosting{}, jobID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "İlan silinemedi"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "İlan ve bağlı başvurular veritabanından tamamen silindi"})
 }

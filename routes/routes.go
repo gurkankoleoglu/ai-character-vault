@@ -151,6 +151,10 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/jobs", handlers.CreateJob)
 	r.GET("/jobs", handlers.GetAllJobs)
 
+	// YENİ EKLENEN İLAN DÜZENLEME VE SİLME ROTALARI:
+	r.PUT("/jobs/:id", handlers.UpdateJob)
+	r.DELETE("/jobs/:id", handlers.DeleteJob)
+
 	r.POST("/posts", handlers.CreatePost)
 	r.GET("/feed", handlers.GetFeed)
 
