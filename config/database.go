@@ -48,6 +48,8 @@ func InitDatabase() {
 		&models.Application{},
 		&models.JobPosting{},
 		&models.Post{},
+		&models.Comment{}, // BUNU EKLE
+		&models.PostLike{},
 		&models.Connection{},
 		&models.Message{},
 		&models.ContactMessage{},
