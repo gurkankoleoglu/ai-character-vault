@@ -8,9 +8,11 @@ type JobPosting struct {
 	CompanyID        uint      `gorm:"not null" json:"company_id"` // Hangi şirket açtı?
 	Company          Company   `gorm:"foreignKey:CompanyID" json:"company"`
 	Title            string    `json:"title"`                              // İlan Başlığı (Örn: Go Backend Stajyeri)
-	Description      string    `json:"description"`                        // İlan Detayları
-	Requirements     string    `json:"requirements"`                       // Aranan Nitelikler
-	InternshipType   string    `json:"internship_type"`                    // Zorunlu, İsteğe Bağlı vb.
+	Description      string    `gorm:"type:text" json:"description"`       // İlan Detayları
+	Requirements     string    `gorm:"type:text" json:"requirements"`      // Aranan Nitelikler
+	Benefits         string    `gorm:"type:text" json:"benefits"`          // YENİ: Sağlanan İmkanlar
+	WorkType         string    `json:"work_type"`                          // YENİ: Çalışma Tipi (full-time, remote vb.)
+	InternshipType   string    `json:"internship_type"`                    // İlan Kategorisi (job, internship)
 	Capacity         int       `json:"capacity"`                           // Kaç kişi alınacak (Kontenjan)
 	Location         string    `json:"location"`                           // Ankara, Remote vb.
 	IsActive         bool      `gorm:"default:true" json:"is_active"`      // İlan yayında mı?

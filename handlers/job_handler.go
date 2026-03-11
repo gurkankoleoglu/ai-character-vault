@@ -15,11 +15,11 @@ func CreateJob(c *gin.Context) {
 		Title        string `json:"title" binding:"required"`
 		Quota        int    `json:"quota"`
 		Location     string `json:"location"`
-		Type         string `json:"type"`
-		Category     string `json:"category"`
+		Type         string `json:"type"`     // Frontend'in gönderdiği çalışma tipi
+		Category     string `json:"category"` // Frontend'in gönderdiği kategori (staj/iş)
 		Details      string `json:"details"`
 		Requirements string `json:"requirements"`
-		Benefits     string `json:"benefits"`
+		Benefits     string `json:"benefits"` // Frontend'in gönderdiği imkanlar
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -38,14 +38,16 @@ func CreateJob(c *gin.Context) {
 		return
 	}
 
-	// Mevcut veritabanı yapına (JobPosting) uygun şekilde eşleştiriyoruz
+	// YENİ ALANLARLA BİRLİKTE VERİTABANINA KAYIT
 	job := models.JobPosting{
 		CompanyID:      user.CompanyProfile.ID,
 		Title:          req.Title,
-		Description:    req.Details, // Frontend'den gelen 'details' alanı
+		Description:    req.Details,
 		Requirements:   req.Requirements,
-		InternshipType: req.Category, // Frontend'den gelen 'category' alanı
-		Capacity:       req.Quota,    // Frontend'den gelen 'quota' alanı
+		Benefits:       req.Benefits, // Yeni eklendi
+		WorkType:       req.Type,     // Yeni eklendi
+		InternshipType: req.Category,
+		Capacity:       req.Quota,
 		Location:       req.Location,
 		IsActive:       true,
 	}
@@ -62,17 +64,14 @@ func CreateJob(c *gin.Context) {
 func GetAllJobs(c *gin.Context) {
 	var jobs []models.JobPosting
 
-	// SADECE Company'yi Preload yapıyoruz (Hata veren .User kısmını sildik)
 	if err := config.DB.Preload("Company").Where("is_active = ?", true).Order("created_at desc").Find(&jobs).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "İlanlar çekilirken bir hata oluştu"})
 		return
 	}
 
-	// Frontend için özel JSON oluşturuyoruz
 	var response []gin.H
 	for _, job := range jobs {
 		var user models.User
-		// Şirketin kime ait olduğunu bulup telefonunu veritabanından kendimiz alıyoruz
 		config.DB.Where("id = ?", job.Company.UserID).First(&user)
 
 		response = append(response, gin.H{
@@ -80,16 +79,17 @@ func GetAllJobs(c *gin.Context) {
 			"title":           job.Title,
 			"description":     job.Description,
 			"requirements":    job.Requirements,
+			"benefits":        job.Benefits, // Yeni eklendi
+			"work_type":       job.WorkType, // Yeni eklendi
 			"internship_type": job.InternshipType,
 			"capacity":        job.Capacity,
 			"location":        job.Location,
 			"created_at":      job.CreatedAt,
 			"company_name":    job.Company.CompanyName,
-			"company_phone":   user.Phone, // İŞTE ÇÖZÜM BURADA! Frontend'in beklediği telefon numarası.
+			"company_phone":   user.Phone,
 		})
 	}
 
-	// Eğer hiç ilan yoksa "null" dönmemesi için boş dizi atıyoruz
 	if response == nil {
 		response = make([]gin.H, 0)
 	}
