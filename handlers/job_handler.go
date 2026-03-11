@@ -74,18 +74,19 @@ func GetAllJobs(c *gin.Context) {
 		config.DB.Where("id = ?", job.Company.UserID).First(&user)
 
 		response = append(response, gin.H{
-			"id":              job.ID,
-			"title":           job.Title,
-			"description":     job.Description,
-			"requirements":    job.Requirements,
-			"benefits":        job.Benefits,
-			"work_type":       job.WorkType,
-			"internship_type": job.InternshipType,
-			"capacity":        job.Capacity,
-			"location":        job.Location,
-			"created_at":      job.CreatedAt,
-			"company_name":    job.Company.CompanyName,
-			"company_phone":   user.Phone,
+			"id":                job.ID,
+			"title":             job.Title,
+			"description":       job.Description,
+			"requirements":      job.Requirements,
+			"benefits":          job.Benefits,
+			"work_type":         job.WorkType,
+			"internship_type":   job.InternshipType,
+			"capacity":          job.Capacity,
+			"location":          job.Location,
+			"created_at":        job.CreatedAt,
+			"company_name":      job.Company.CompanyName,
+			"company_phone":     user.Phone,
+			"application_count": job.ApplicationCount, // EKSİK OLAN VE ŞİMDİ EKLENEN SATIR BURASI! 🚀
 		})
 	}
 
