@@ -157,3 +157,30 @@ func AddComment(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Yorum başarıyla eklendi", "comment": comment})
 }
+
+// GetUserPosts: Sadece belirli bir kullanıcıya (telefon numarasına) ait gönderileri getirir
+func GetUserPosts(c *gin.Context) {
+	phone := c.Param("phone")
+
+	// Önce telefon numarasından kullanıcıyı bulalım
+	var user models.User
+	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
+		return
+	}
+
+	// Kullanıcının gönderilerini bulalım
+	var posts []models.Post
+	if err := config.DB.
+		Where("user_id = ?", user.ID).
+		Preload("User").
+		Preload("Comments.User").
+		Preload("PostLikes").
+		Order("created_at desc").
+		Find(&posts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gönderiler yüklenemedi"})
+		return
+	}
+
+	c.JSON(http.StatusOK, posts)
+}
