@@ -171,6 +171,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/messages", handlers.SendMessage)                    // Mesaj Gönder
 	r.GET("/messages/:phone1/:phone2", handlers.GetConversation) // Sohbet Geçmişini Çek
 
+	// YENİ EKLENEN İNBOX ROTASI
+	r.GET("/messages/inbox/:phone", handlers.GetInbox)
+
 	// Admin İşlemleri
 	r.GET("/admin/pending", handlers.GetPendingApprovals)
 	r.PUT("/admin/approve-student/:id", handlers.ApproveStudent)
