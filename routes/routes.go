@@ -101,7 +101,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/applications", handlers.GetApplications)
 
 	// Başvuru durumunu (Onayla/Reddet) güncelle
-	r.PATCH("/applications/:id/status", handlers.UpdateApplicationStatus)
+	r.PUT("/applications/:id", handlers.UpdateApplicationStatus)
 
 	// Başvuru bilgilerini düzenle
 	// r.PUT("/applications/:id", handlers.UpdateApplication)
