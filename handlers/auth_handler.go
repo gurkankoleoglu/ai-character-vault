@@ -14,7 +14,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// RequestOTP: Herkes için (Şirket, Öğrenci, Admin) giriş kapısı.
 func RequestOTP(c *gin.Context) {
 	type Request struct {
 		Phone string `json:"phone" binding:"required"`
@@ -31,7 +30,6 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
-	// SPAM KONTROLÜ
 	var lastOTP models.OTP
 	err := config.DB.Where("phone = ?", req.Phone).Order("created_at DESC").First(&lastOTP).Error
 	if err == nil && time.Since(lastOTP.CreatedAt) < 60*time.Second {
@@ -39,7 +37,6 @@ func RequestOTP(c *gin.Context) {
 		return
 	}
 
-	// OTP ÜRETME
 	otpCode := utils.GenerateOTP()
 	fmt.Printf("\n🚀 [SMS SİMÜLASYONU] -> Tel: %s | Kod: %s\n", req.Phone, otpCode)
 
@@ -55,7 +52,6 @@ func RequestOTP(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Doğrulama kodu oluşturuldu.", "otp": otpCode})
 }
 
-// VerifyOTP: Kod doğrulama sonrası kullanıcıyı sisteme alır ve rolünü bildirir
 func VerifyOTP(c *gin.Context) {
 	type Request struct {
 		Phone string `json:"phone" binding:"required"`
@@ -91,7 +87,6 @@ func VerifyOTP(c *gin.Context) {
 	var user models.User
 	isNewUser := false
 
-	// Kullanıcı yoksa varsayılan olarak "student" oluştur
 	if err := config.DB.Where("phone = ?", req.Phone).Preload("StudentProfile").Preload("CompanyProfile").First(&user).Error; err != nil {
 		user = models.User{Phone: req.Phone, Role: "student"}
 		config.DB.Create(&user)
@@ -109,7 +104,6 @@ func VerifyOTP(c *gin.Context) {
 	})
 }
 
-// CompleteProfile: YENİ MİMARİ. Kullanıcının rolüne göre alt tabloları doldurur (Dosya Yükleme ve Upsert Destekli)
 func CompleteProfile(c *gin.Context) {
 	phone := c.PostForm("phone")
 	role := c.PostForm("role")
@@ -120,10 +114,8 @@ func CompleteProfile(c *gin.Context) {
 		return
 	}
 
-	// 1. KULLANICIYI BUL VEYA SIFIRDAN YARAT (Upsert Mantığı)
 	var user models.User
 	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
-		// Veritabanında yoksa sıfırdan oluştur
 		user = models.User{
 			Phone:              phone,
 			Role:               role,
@@ -135,20 +127,16 @@ func CompleteProfile(c *gin.Context) {
 			return
 		}
 	} else {
-		// Varsa bilgilerini güncelle
 		user.Email = email
 		user.Role = role
 		user.IsProfileCompleted = true
 		config.DB.Save(&user)
 	}
 
-	// 2. ROL BAZLI ALT TABLOLARI DOLDUR
-	// Rol Öğrenci ise:
 	if role == "student" {
 		user.FullNames = c.PostForm("full_name")
-		config.DB.Save(&user) // Öğrencinin adını ana tabloya da kaydet
+		config.DB.Save(&user)
 
-		// Dosya Yükleme İşlemi (Öğrenci Belgesi)
 		file, _ := c.FormFile("student_document")
 		var filePath string
 		if file != nil {
@@ -159,27 +147,23 @@ func CompleteProfile(c *gin.Context) {
 
 		var student models.Student
 		if err := config.DB.Where("user_id = ?", user.ID).First(&student).Error; err != nil {
-			// Öğrenci profili yoksa yarat
 			student = models.Student{
 				UserID:         user.ID,
 				TCNo:           c.PostForm("tc_no"),
 				University:     c.PostForm("university"),
 				Department:     c.PostForm("department"),
-				StudentCertUrl: filePath, // Yüklenen dosyanın yolu
+				StudentCertUrl: filePath,
 			}
 			config.DB.Create(&student)
 		} else {
-			// Öğrenci profili varsa güncelle
 			student.TCNo = c.PostForm("tc_no")
 			student.University = c.PostForm("university")
 			student.Department = c.PostForm("department")
 			if filePath != "" {
-				student.StudentCertUrl = filePath // Sadece yeni dosya yüklendiyse güncelle
+				student.StudentCertUrl = filePath
 			}
 			config.DB.Save(&student)
 		}
-
-		// Rol Şirket ise:
 	} else if role == "company" {
 		var company models.Company
 		if err := config.DB.Where("user_id = ?", user.ID).First(&company).Error; err != nil {
@@ -187,7 +171,7 @@ func CompleteProfile(c *gin.Context) {
 				UserID:      user.ID,
 				CompanyName: c.PostForm("company_name"),
 				TaxNumber:   c.PostForm("tax_number"),
-				Industry:    c.PostForm("sector"), // Frontend'den gelen 'sector' verisi
+				Industry:    c.PostForm("sector"),
 			}
 			config.DB.Create(&company)
 		} else {
@@ -201,21 +185,52 @@ func CompleteProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Profil başarıyla güncellendi"})
 }
 
-// GetUserByPhone: Kullanıcının genel ve rolüne ait detaylarını getirir
+// 🌟 YENİ VE KUSURSUZ GetUserByPhone: GORM'u atlayıp veriyi doğrudan JSON'a işliyoruz
 func GetUserByPhone(c *gin.Context) {
 	phone := c.Param("phone")
 	var user models.User
 
-	// Preload ile ilişkili tabloları (öğrenci/şirket detaylarını) da çekiyoruz
-	if err := config.DB.Where("phone = ?", phone).Preload("StudentProfile").Preload("CompanyProfile").First(&user).Error; err != nil {
+	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	// Ana JSON Paketi
+	response := gin.H{
+		"id":                   user.ID,
+		"phone":                user.Phone,
+		"email":                user.Email,
+		"full_name":            user.FullNames,
+		"role":                 user.Role,
+		"location":             user.Location,
+		"bio":                  user.Bio,
+		"avatar_url":           user.AvatarURL,
+		"is_profile_completed": user.IsProfileCompleted,
+	}
+
+	// Öğrenci bilgilerini çekip paket içine ekliyoruz
+	if user.Role == "student" {
+		var student models.Student
+		config.DB.Where("user_id = ?", user.ID).First(&student)
+
+		response["student_profile"] = student
+		response["university"] = student.University // SİHİRLİ DOKUNUŞ: Frontend direkt bunu okuyacak
+		response["department"] = student.Department
+		response["skills"] = student.Skills
+		response["github"] = student.Github
+	} else if user.Role == "company" {
+		var company models.Company
+		config.DB.Where("user_id = ?", user.ID).First(&company)
+
+		response["company_profile"] = company
+		response["company_name"] = company.CompanyName
+		response["sector"] = company.Industry
+		response["website"] = company.Website
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
-// YENİ EKLENEN FONKSİYON: Kullanıcının profil bilgilerini günceller
 func UpdateUserProfile(c *gin.Context) {
 	phone := c.Param("phone")
 
@@ -225,17 +240,14 @@ func UpdateUserProfile(c *gin.Context) {
 		return
 	}
 
-	// Temel bilgileri güncelle
 	user.FullNames = c.PostForm("full_name")
 	user.Email = c.PostForm("email")
 	user.Location = c.PostForm("location")
 	user.Bio = c.PostForm("bio")
 
-	// Eğer profil fotoğrafı yüklenmişse kaydet
 	avatarFile, _ := c.FormFile("avatar")
 	if avatarFile != nil {
 		ext := filepath.Ext(avatarFile.Filename)
-		// uuid paketi yüklü olduğu için isim çakışmalarını önlüyoruz
 		avatarPath := filepath.ToSlash(filepath.Join("uploads", fmt.Sprintf("avatar_%s%s", phone, ext)))
 		if err := c.SaveUploadedFile(avatarFile, avatarPath); err == nil {
 			user.AvatarURL = "http://localhost:8080/" + avatarPath
@@ -243,10 +255,8 @@ func UpdateUserProfile(c *gin.Context) {
 	}
 	config.DB.Save(&user)
 
-	// Role göre alt profilleri güncelle
 	if user.Role == "student" {
 		var student models.Student
-		// Eğer öğrenci profili yoksa oluştur, varsa bul
 		config.DB.Where("user_id = ?", user.ID).FirstOrCreate(&student, models.Student{UserID: user.ID})
 
 		student.University = c.PostForm("university")
@@ -265,7 +275,6 @@ func UpdateUserProfile(c *gin.Context) {
 		config.DB.Save(&company)
 	}
 
-	// Sadece güncellenen resim url'sini geri dönsek yeter, frontend diğerlerini state'den hallediyor
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Profil başarıyla güncellendi",
 		"avatar_url": user.AvatarURL,
