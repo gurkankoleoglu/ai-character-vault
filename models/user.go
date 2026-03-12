@@ -4,17 +4,22 @@ import (
 	"time"
 )
 
-// User: Sisteme giriş yapan herkesin temel kimlik bilgilerini tutar (Auth tablosu)
+// User: Sisteme giriş yapan herkesin temel kimlik bilgilerini tutar
 type User struct {
-	ID                 uint      `gorm:"primaryKey" json:"id"`
-	Phone              string    `gorm:"unique;not null" json:"phone"`
-	Email              string    `json:"email"`
-	FullNames          string    `json:"full_name"`                     // Şirket yetkilisi veya öğrencinin adı
-	Role               string    `gorm:"default:'student'" json:"role"` // 'student', 'company', 'admin'
-	IsProfileCompleted bool      `gorm:"default:false" json:"is_profile_completed"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                 uint   `gorm:"primaryKey" json:"id"`
+	Phone              string `gorm:"unique;not null" json:"phone"`
+	Email              string `json:"email"`
+	FullNames          string `json:"full_name"`
+	Role               string `gorm:"default:'student'" json:"role"`
+	IsProfileCompleted bool   `gorm:"default:false" json:"is_profile_completed"`
 
-	// İlişkiler (Has-One) - Bir kullanıcının ya öğrenci profili vardır ya da şirket profili
+	// YENİ EKLENEN PROFİL ALANLARI
+	Location  string `json:"location"`
+	Bio       string `gorm:"type:text" json:"bio"`
+	AvatarURL string `json:"avatar_url"`
+
+	CreatedAt time.Time `json:"created_at"`
+
 	StudentProfile *Student `gorm:"foreignKey:UserID" json:"student_profile,omitempty"`
 	CompanyProfile *Company `gorm:"foreignKey:UserID" json:"company_profile,omitempty"`
 }
@@ -23,9 +28,9 @@ type User struct {
 type DailyReport struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	UserID    uint      `json:"user_id"`
-	User      User      `gorm:"foreignKey:UserID"`        // Kullanıcı ile ilişkilendirme
-	Content   string    `gorm:"type:text" json:"content"` // Rapor içeriği
-	Date      time.Time `gorm:"not null" json:"date"`     // Raporun hangi güne ait olduğu
+	User      User      `gorm:"foreignKey:UserID"`
+	Content   string    `gorm:"type:text" json:"content"`
+	Date      time.Time `gorm:"not null" json:"date"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

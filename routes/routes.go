@@ -177,4 +177,7 @@ func SetupRoutes(r *gin.Engine) {
 	// Şirket - Stajyer Raporları İzleme
 	r.GET("/company/:phone/interns", handlers.GetCompanyInterns)
 	r.GET("/company/:phone/interns/:intern_user_id/reports", handlers.GetCompanyInternReports)
+
+	// Profil Düzenleme İşlemi
+	r.PUT("/users/:phone", handlers.UpdateUserProfile)
 }

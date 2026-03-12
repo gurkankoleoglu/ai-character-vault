@@ -214,3 +214,60 @@ func GetUserByPhone(c *gin.Context) {
 
 	c.JSON(http.StatusOK, user)
 }
+
+// YENİ EKLENEN FONKSİYON: Kullanıcının profil bilgilerini günceller
+func UpdateUserProfile(c *gin.Context) {
+	phone := c.Param("phone")
+
+	var user models.User
+	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
+		return
+	}
+
+	// Temel bilgileri güncelle
+	user.FullNames = c.PostForm("full_name")
+	user.Email = c.PostForm("email")
+	user.Location = c.PostForm("location")
+	user.Bio = c.PostForm("bio")
+
+	// Eğer profil fotoğrafı yüklenmişse kaydet
+	avatarFile, _ := c.FormFile("avatar")
+	if avatarFile != nil {
+		ext := filepath.Ext(avatarFile.Filename)
+		// uuid paketi yüklü olduğu için isim çakışmalarını önlüyoruz
+		avatarPath := filepath.ToSlash(filepath.Join("uploads", fmt.Sprintf("avatar_%s%s", phone, ext)))
+		if err := c.SaveUploadedFile(avatarFile, avatarPath); err == nil {
+			user.AvatarURL = "http://localhost:8080/" + avatarPath
+		}
+	}
+	config.DB.Save(&user)
+
+	// Role göre alt profilleri güncelle
+	if user.Role == "student" {
+		var student models.Student
+		// Eğer öğrenci profili yoksa oluştur, varsa bul
+		config.DB.Where("user_id = ?", user.ID).FirstOrCreate(&student, models.Student{UserID: user.ID})
+
+		student.University = c.PostForm("university")
+		student.Department = c.PostForm("department")
+		student.Skills = c.PostForm("skills")
+		student.Github = c.PostForm("github")
+		config.DB.Save(&student)
+
+	} else if user.Role == "company" {
+		var company models.Company
+		config.DB.Where("user_id = ?", user.ID).FirstOrCreate(&company, models.Company{UserID: user.ID})
+
+		company.CompanyName = c.PostForm("company_name")
+		company.Industry = c.PostForm("sector")
+		company.Website = c.PostForm("website")
+		config.DB.Save(&company)
+	}
+
+	// Sadece güncellenen resim url'sini geri dönsek yeter, frontend diğerlerini state'den hallediyor
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Profil başarıyla güncellendi",
+		"avatar_url": user.AvatarURL,
+	})
+}
