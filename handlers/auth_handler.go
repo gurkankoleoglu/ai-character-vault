@@ -95,11 +95,13 @@ func VerifyOTP(c *gin.Context) {
 		isNewUser = true
 	}
 
+	// DÜZELTİLEN KISIM BURASI: full_names verisini frontend'e gönderiyoruz
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "Giriş başarılı!",
 		"user_id":     user.ID,
 		"phone":       user.Phone,
 		"role":        user.Role,
+		"full_names":  user.FullNames, // <-- Bu satır eklendi
 		"is_new_user": isNewUser,
 	})
 }
@@ -185,7 +187,6 @@ func CompleteProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Profil başarıyla güncellendi"})
 }
 
-// 🌟 YENİ VE KUSURSUZ GetUserByPhone: GORM'u atlayıp veriyi doğrudan JSON'a işliyoruz
 func GetUserByPhone(c *gin.Context) {
 	phone := c.Param("phone")
 	var user models.User
@@ -195,7 +196,6 @@ func GetUserByPhone(c *gin.Context) {
 		return
 	}
 
-	// Ana JSON Paketi
 	response := gin.H{
 		"id":                   user.ID,
 		"phone":                user.Phone,
@@ -208,20 +208,17 @@ func GetUserByPhone(c *gin.Context) {
 		"is_profile_completed": user.IsProfileCompleted,
 	}
 
-	// Öğrenci bilgilerini çekip paket içine ekliyoruz
 	if user.Role == "student" {
 		var student models.Student
 		config.DB.Where("user_id = ?", user.ID).First(&student)
-
 		response["student_profile"] = student
-		response["university"] = student.University // SİHİRLİ DOKUNUŞ: Frontend direkt bunu okuyacak
+		response["university"] = student.University
 		response["department"] = student.Department
 		response["skills"] = student.Skills
 		response["github"] = student.Github
 	} else if user.Role == "company" {
 		var company models.Company
 		config.DB.Where("user_id = ?", user.ID).First(&company)
-
 		response["company_profile"] = company
 		response["company_name"] = company.CompanyName
 		response["sector"] = company.Industry
@@ -258,17 +255,14 @@ func UpdateUserProfile(c *gin.Context) {
 	if user.Role == "student" {
 		var student models.Student
 		config.DB.Where("user_id = ?", user.ID).FirstOrCreate(&student, models.Student{UserID: user.ID})
-
 		student.University = c.PostForm("university")
 		student.Department = c.PostForm("department")
 		student.Skills = c.PostForm("skills")
 		student.Github = c.PostForm("github")
 		config.DB.Save(&student)
-
 	} else if user.Role == "company" {
 		var company models.Company
 		config.DB.Where("user_id = ?", user.ID).FirstOrCreate(&company, models.Company{UserID: user.ID})
-
 		company.CompanyName = c.PostForm("company_name")
 		company.Industry = c.PostForm("sector")
 		company.Website = c.PostForm("website")
