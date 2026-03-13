@@ -191,4 +191,6 @@ func SetupRoutes(r *gin.Engine) {
 
 	r.GET("/connect/status/:phone1/:phone2", handlers.GetConnectionStatus) // İki kullanıcı arasındaki bağlantı durumunu kontrol et
 
+	r.POST("/logout", handlers.Logout)
+
 }

@@ -88,20 +88,25 @@ func VerifyOTP(c *gin.Context) {
 	isNewUser := false
 
 	if err := config.DB.Where("phone = ?", req.Phone).Preload("StudentProfile").Preload("CompanyProfile").First(&user).Error; err != nil {
-		user = models.User{Phone: req.Phone, Role: "student"}
+		user = models.User{Phone: req.Phone, Role: "student", IsOnline: true} // Yeni kullanıcı aktif girer
 		config.DB.Create(&user)
 		isNewUser = true
-	} else if user.FullNames == "" {
-		isNewUser = true
+	} else {
+		// Mevcut kullanıcıyı çevrimiçi yap
+		user.IsOnline = true
+		config.DB.Save(&user)
+		if user.FullNames == "" {
+			isNewUser = true
+		}
 	}
 
-	// DÜZELTİLEN KISIM BURASI: full_names verisini frontend'e gönderiyoruz
 	c.JSON(http.StatusOK, gin.H{
 		"message":     "Giriş başarılı!",
 		"user_id":     user.ID,
 		"phone":       user.Phone,
 		"role":        user.Role,
-		"full_names":  user.FullNames, // <-- Bu satır eklendi
+		"full_names":  user.FullNames,
+		"is_online":   user.IsOnline, // Aktiflik bilgisini gönderiyoruz
 		"is_new_user": isNewUser,
 	})
 }
@@ -123,6 +128,7 @@ func CompleteProfile(c *gin.Context) {
 			Role:               role,
 			Email:              email,
 			IsProfileCompleted: true,
+			IsOnline:           true,
 		}
 		if err := config.DB.Create(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Kullanıcı hesabı oluşturulamadı"})
@@ -206,6 +212,7 @@ func GetUserByPhone(c *gin.Context) {
 		"bio":                  user.Bio,
 		"avatar_url":           user.AvatarURL,
 		"is_profile_completed": user.IsProfileCompleted,
+		"is_online":            user.IsOnline, // Aktiflik durumu eklendi
 	}
 
 	if user.Role == "student" {
@@ -273,4 +280,24 @@ func UpdateUserProfile(c *gin.Context) {
 		"message":    "Profil başarıyla güncellendi",
 		"avatar_url": user.AvatarURL,
 	})
+}
+
+// Logout: Kullanıcıyı çevrimdışı yapar
+func Logout(c *gin.Context) {
+	var req struct {
+		Phone string `json:"phone" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Telefon numarası gerekli"})
+		return
+	}
+
+	// Veritabanında IsOnline değerini false yapıyoruz
+	if err := config.DB.Model(&models.User{}).Where("phone = ?", req.Phone).Update("is_online", false).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Çıkış işlemi başarısız"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Başarıyla çıkış yapıldı"})
 }

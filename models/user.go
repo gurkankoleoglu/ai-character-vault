@@ -12,7 +12,7 @@ type User struct {
 	FullNames          string `json:"full_name"`
 	Role               string `gorm:"default:'student'" json:"role"`
 	IsProfileCompleted bool   `gorm:"default:false" json:"is_profile_completed"`
-
+	IsOnline           bool   `gorm:"default:false" json:"is_online"` // YENİ ALAN
 	// YENİ EKLENEN PROFİL ALANLARI
 	Location  string `json:"location"`
 	Bio       string `gorm:"type:text" json:"bio"`
