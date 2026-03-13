@@ -41,7 +41,10 @@ func SendConnectionRequest(c *gin.Context) {
 		sender.ID, receiver.ID, receiver.ID, sender.ID).First(&existingConn).Error
 
 	if err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Bu kullanıcıyla zaten bir bağlantınız veya bekleyen isteğiniz var", "status": existingConn.Status})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "Bu kullanıcıyla zaten bir bağlantınız veya bekleyen isteğiniz var",
+			"status": existingConn.Status,
+		})
 		return
 	}
 
@@ -61,13 +64,8 @@ func SendConnectionRequest(c *gin.Context) {
 
 // RespondConnectionRequest: İsteği onaylar veya reddeder
 func RespondConnectionRequest(c *gin.Context) {
-	connID := c.Param("id")     // Connection tablosundaki ID
-	status := c.Query("action") // URL'den ?action=onaylandi gelecek
-
-	if status != "onaylandi" && status != "reddedildi" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Geçersiz işlem. Sadece 'onaylandi' veya 'reddedildi' olabilir."})
-		return
-	}
+	connID := c.Param("id")
+	status := c.Query("action") // "onaylandi" veya "reddedildi"
 
 	var conn models.Connection
 	if err := config.DB.First(&conn, connID).Error; err != nil {
@@ -76,12 +74,51 @@ func RespondConnectionRequest(c *gin.Context) {
 	}
 
 	conn.Status = status
-	config.DB.Save(&conn)
+	if err := config.DB.Save(&conn).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Güncelleme başarısız"})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Bağlantı durumu güncellendi", "new_status": status})
+	message := "Bağlantı isteği reddedildi."
+	if status == "onaylandi" {
+		message = "Artık bağlantı kurdunuz!"
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": message, "status": status})
 }
 
-// GetPendingRequests: Kullanıcıya gelen (bekleyen) istekleri listeler (Ağım sayfası)
+// GetConnectionStatus: İki kullanıcı arasındaki bağlantı durumunu kontrol eder (Profil sayfası için)
+func GetConnectionStatus(c *gin.Context) {
+	p1 := c.Param("phone1")
+	p2 := c.Param("phone2")
+
+	var user1, user2 models.User
+	// Kullanıcıların varlığını ve ID'lerini al
+	if err := config.DB.Where("phone = ?", p1).First(&user1).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "none"})
+		return
+	}
+	if err := config.DB.Where("phone = ?", p2).First(&user2).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"status": "none"})
+		return
+	}
+
+	var conn models.Connection
+	// Her iki yönde de kayıt var mı bak (A -> B veya B -> A)
+	err := config.DB.Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
+		user1.ID, user2.ID, user2.ID, user1.ID).First(&conn).Error
+
+	if err != nil {
+		// Bağlantı kaydı yoksa
+		c.JSON(http.StatusOK, gin.H{"status": "none"})
+		return
+	}
+
+	// Kayıt varsa veritabanındaki güncel durumu dön
+	c.JSON(http.StatusOK, gin.H{"status": conn.Status})
+}
+
+// GetPendingRequests: Kullanıcıya gelen (bekleyen) istekleri listeler
 func GetPendingRequests(c *gin.Context) {
 	phone := c.Param("phone")
 
@@ -92,10 +129,35 @@ func GetPendingRequests(c *gin.Context) {
 	}
 
 	var requests []models.Connection
-	// Sadece Alıcısı(Receiver) olduğumuz ve durumu "beklemede" olanlar
 	config.DB.Preload("Sender").
 		Where("receiver_id = ? AND status = ?", user.ID, "beklemede").
 		Find(&requests)
 
 	c.JSON(http.StatusOK, requests)
+}
+
+// GetConnections: Kullanıcının onaylanmış tüm bağlantılarını listeler
+func GetConnections(c *gin.Context) {
+	phone := c.Param("phone")
+	var user models.User
+	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
+		return
+	}
+
+	var connections []models.Connection
+	config.DB.Preload("Sender").Preload("Receiver").
+		Where("status = ? AND (sender_id = ? OR receiver_id = ?)", "onaylandi", user.ID, user.ID).
+		Find(&connections)
+
+	var friends []models.User
+	for _, conn := range connections {
+		if conn.SenderID == user.ID {
+			friends = append(friends, conn.Receiver)
+		} else {
+			friends = append(friends, conn.Sender)
+		}
+	}
+
+	c.JSON(http.StatusOK, friends)
 }

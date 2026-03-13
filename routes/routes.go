@@ -185,4 +185,10 @@ func SetupRoutes(r *gin.Engine) {
 
 	// Profil Düzenleme İşlemi
 	r.PUT("/users/:phone", handlers.UpdateUserProfile)
+
+	// Bağlantılar
+	r.GET("/connect/list/:phone", handlers.GetConnections) // Onaylı bağlantılarım
+
+	r.GET("/connect/status/:phone1/:phone2", handlers.GetConnectionStatus) // İki kullanıcı arasındaki bağlantı durumunu kontrol et
+
 }
