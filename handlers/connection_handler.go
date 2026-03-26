@@ -161,3 +161,28 @@ func GetConnections(c *gin.Context) {
 
 	c.JSON(http.StatusOK, friends)
 }
+
+// RemoveConnection: Var olan bir bağlantıyı (veya isteği) tamamen siler
+func RemoveConnection(c *gin.Context) {
+	phone1 := c.Param("phone1")
+	phone2 := c.Param("phone2")
+
+	var user1, user2 models.User
+	if err := config.DB.Where("phone = ?", phone1).First(&user1).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
+		return
+	}
+	if err := config.DB.Where("phone = ?", phone2).First(&user2).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Karşı kullanıcı bulunamadı"})
+		return
+	}
+
+	// İki kullanıcı arasındaki bağlantı kaydını kalıcı olarak sil
+	if err := config.DB.Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
+		user1.ID, user2.ID, user2.ID, user1.ID).Delete(&models.Connection{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Bağlantı kaldırılamadı"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Bağlantı başarıyla silindi"})
+}

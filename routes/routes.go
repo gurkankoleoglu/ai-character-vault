@@ -195,6 +195,8 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/connect/list/:phone", handlers.GetConnections) // Onaylı bağlantılarım
 
 	r.GET("/connect/status/:phone1/:phone2", handlers.GetConnectionStatus) // İki kullanıcı arasındaki bağlantı durumunu kontrol et
+	// YENİ EKLENEN ROTA: Onaylı bir bağlantıyı siler / iptal eder
+	r.DELETE("/connect/:phone1/:phone2", handlers.RemoveConnection)
 
 	r.POST("/logout", handlers.Logout)
 
