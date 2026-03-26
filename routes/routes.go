@@ -198,4 +198,15 @@ func SetupRoutes(r *gin.Engine) {
 
 	r.POST("/logout", handlers.Logout)
 
+	// ─── EĞİTİM VİDEOLARI ROTALARI ───
+	r.GET("/training-videos", handlers.GetPublicVideos)
+	r.POST("/training-videos", handlers.CreatePublicVideo)
+	r.PUT("/training-videos/:id", handlers.UpdateVideo)
+	r.DELETE("/training-videos/:id", handlers.DeleteVideo)
+
+	r.GET("/company-videos", handlers.GetCompanyVideos)
+	r.POST("/company-videos", handlers.CreateCompanyVideo)
+	r.PUT("/company-videos/:id", handlers.UpdateVideo)
+	r.DELETE("/company-videos/:id", handlers.DeleteVideo)
+
 }

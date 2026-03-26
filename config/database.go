@@ -54,6 +54,7 @@ func InitDatabase() {
 		&models.Message{},
 		&models.ContactMessage{},
 		&models.DailyReport{},
+		&models.Video{},
 		&models.Announcement{},
 	)
 
