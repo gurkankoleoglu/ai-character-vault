@@ -174,6 +174,11 @@ func SetupRoutes(r *gin.Engine) {
 	// YENİ EKLENEN İNBOX ROTASI
 	r.GET("/messages/inbox/:phone", handlers.GetInbox)
 
+	// YENİ EKLENEN MESAJ İŞLEMLERİ (Düzenle, Sil, Sohbeti Sil)
+	r.PUT("/messages/:id", handlers.EditMessage)                                    // Mesajı Düzenle
+	r.DELETE("/messages/:id", handlers.DeleteMessage)                               // Tekil Mesaj Sil
+	r.DELETE("/messages/conversation/:phone1/:phone2", handlers.DeleteConversation) // Tüm Sohbeti Sil
+
 	// Admin İşlemleri
 	r.GET("/admin/pending", handlers.GetPendingApprovals)
 	r.PUT("/admin/approve-student/:id", handlers.ApproveStudent)

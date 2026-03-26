@@ -145,3 +145,66 @@ func GetInbox(c *gin.Context) {
 
 	c.JSON(http.StatusOK, results)
 }
+
+// EditMessage: Önceden atılmış bir mesajı düzenler
+func EditMessage(c *gin.Context) {
+	msgID := c.Param("id")
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Geçersiz içerik"})
+		return
+	}
+
+	var msg models.Message
+	if err := config.DB.First(&msg, msgID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Mesaj bulunamadı"})
+		return
+	}
+
+	msg.Content = req.Content
+	config.DB.Save(&msg)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Mesaj başarıyla güncellendi"})
+}
+
+// DeleteMessage: Tek bir mesajı siler
+func DeleteMessage(c *gin.Context) {
+	msgID := c.Param("id")
+
+	if err := config.DB.Delete(&models.Message{}, msgID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Mesaj silinemedi"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Mesaj silindi"})
+}
+
+// DeleteConversation: İki kişi arasındaki tüm sohbet geçmişini kalıcı olarak siler
+func DeleteConversation(c *gin.Context) {
+	phone1 := c.Param("phone1")
+	phone2 := c.Param("phone2")
+
+	var user1, user2 models.User
+	if err := config.DB.Where("phone = ?", phone1).First(&user1).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "1. Kullanıcı bulunamadı"})
+		return
+	}
+	if err := config.DB.Where("phone = ?", phone2).First(&user2).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "2. Kullanıcı bulunamadı"})
+		return
+	}
+
+	// İki kişi arasındaki tüm mesajları kalıcı olarak sil
+	err := config.DB.Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
+		user1.ID, user2.ID, user2.ID, user1.ID).Delete(&models.Message{}).Error
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sohbet silinemedi"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Sohbet başarıyla silindi"})
+}
