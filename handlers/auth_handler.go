@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -88,11 +87,10 @@ func VerifyOTP(c *gin.Context) {
 	isNewUser := false
 
 	if err := config.DB.Where("phone = ?", req.Phone).Preload("StudentProfile").Preload("CompanyProfile").First(&user).Error; err != nil {
-		user = models.User{Phone: req.Phone, Role: "student", IsOnline: true} // Yeni kullanıcı aktif girer
+		user = models.User{Phone: req.Phone, Role: "student", IsOnline: true}
 		config.DB.Create(&user)
 		isNewUser = true
 	} else {
-		// Mevcut kullanıcıyı çevrimiçi yap
 		user.IsOnline = true
 		config.DB.Save(&user)
 		if user.FullNames == "" {
@@ -106,91 +104,89 @@ func VerifyOTP(c *gin.Context) {
 		"phone":       user.Phone,
 		"role":        user.Role,
 		"full_names":  user.FullNames,
-		"is_online":   user.IsOnline, // Aktiflik bilgisini gönderiyoruz
+		"is_online":   user.IsOnline,
 		"is_new_user": isNewUser,
 	})
 }
 
 func CompleteProfile(c *gin.Context) {
-	phone := c.PostForm("phone")
-	role := c.PostForm("role")
 	email := c.PostForm("email")
+	password := c.PostForm("password")
+	role := c.PostForm("role")
+	phoneForm := c.PostForm("phone") // Formdan gelen gerçek veri
 
-	if phone == "" || role == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Telefon ve rol bilgisi zorunludur"})
+	if email == "" || role == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "E-posta ve rol bilgisi zorunludur"})
 		return
 	}
 
 	var user models.User
-	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
+	// E-posta ile kullanıcıyı bul veya yeni oluştur
+	if err := config.DB.Where("email = ?", email).First(&user).Error; err != nil {
+
+		// KRİTİK DÜZELTME: Telefon unique (benzersiz) olduğu için, boş geldiğinde hata fırlatmasını
+		// engellemek amacıyla zaman damgalı benzersiz bir "sahte" numara atıyoruz.
+		phoneToSave := phoneForm
+		if phoneToSave == "" {
+			phoneToSave = fmt.Sprintf("temp-%d", time.Now().UnixNano())
+		}
+
+		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+
 		user = models.User{
-			Phone:              phone,
-			Role:               role,
 			Email:              email,
+			Password:           string(hashedPassword),
+			Role:               role,
+			Phone:              phoneToSave, // Artık her kayıt için tamamen benzersiz
 			IsProfileCompleted: true,
 			IsOnline:           true,
 		}
+
 		if err := config.DB.Create(&user).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Kullanıcı hesabı oluşturulamadı"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Kullanıcı hesabı oluşturulamadı: " + err.Error()})
 			return
 		}
 	} else {
-		user.Email = email
+		// Mevcut Kullanıcı Güncelleme İşlemi
 		user.Role = role
+		if password != "" {
+			hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+			user.Password = string(hashedPassword)
+		}
+		// Sadece formdan GERÇEK bir numara edildiyse üzerine yaz, sahte olanla değiştirme
+		if phoneForm != "" {
+			user.Phone = phoneForm
+		}
 		user.IsProfileCompleted = true
 		config.DB.Save(&user)
 	}
 
+	// Profile göre alt tablo kayıtlarını oluşturma (NOT NULL kısıtlamalarını aşmak için varsayılan değerler)
 	if role == "student" {
-		user.FullNames = c.PostForm("full_name")
-		config.DB.Save(&user)
-
-		file, _ := c.FormFile("student_document")
-		var filePath string
-		if file != nil {
-			fileUUID := uuid.New().String()
-			filePath = filepath.ToSlash(filepath.Join("uploads", fmt.Sprintf("cert_%s%s", fileUUID, filepath.Ext(file.Filename))))
-			c.SaveUploadedFile(file, filePath)
-		}
-
 		var student models.Student
 		if err := config.DB.Where("user_id = ?", user.ID).First(&student).Error; err != nil {
 			student = models.Student{
-				UserID:         user.ID,
-				TCNo:           c.PostForm("tc_no"),
-				University:     c.PostForm("university"),
-				Department:     c.PostForm("department"),
-				StudentCertUrl: filePath,
+				UserID:     user.ID,
+				TCNo:       "00000000000",
+				University: "Belirtilmedi",
+				Department: "Belirtilmedi",
 			}
 			config.DB.Create(&student)
-		} else {
-			student.TCNo = c.PostForm("tc_no")
-			student.University = c.PostForm("university")
-			student.Department = c.PostForm("department")
-			if filePath != "" {
-				student.StudentCertUrl = filePath
-			}
-			config.DB.Save(&student)
 		}
 	} else if role == "company" {
 		var company models.Company
 		if err := config.DB.Where("user_id = ?", user.ID).First(&company).Error; err != nil {
 			company = models.Company{
 				UserID:      user.ID,
-				CompanyName: c.PostForm("company_name"),
-				TaxNumber:   c.PostForm("tax_number"),
-				Industry:    c.PostForm("sector"),
+				CompanyName: "Belirtilmedi",
+				TaxNumber:   "0000000000",
+				Industry:    "Belirtilmedi",
 			}
 			config.DB.Create(&company)
-		} else {
-			company.CompanyName = c.PostForm("company_name")
-			company.TaxNumber = c.PostForm("tax_number")
-			company.Industry = c.PostForm("sector")
-			config.DB.Save(&company)
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Profil başarıyla güncellendi"})
+	c.JSON(http.StatusOK, gin.H{"message": "Kayıt başarıyla tamamlandı"})
 }
 
 func GetUserByPhone(c *gin.Context) {
@@ -212,7 +208,7 @@ func GetUserByPhone(c *gin.Context) {
 		"bio":                  user.Bio,
 		"avatar_url":           user.AvatarURL,
 		"is_profile_completed": user.IsProfileCompleted,
-		"is_online":            user.IsOnline, // Aktiflik durumu eklendi
+		"is_online":            user.IsOnline,
 	}
 
 	if user.Role == "student" {
@@ -282,7 +278,6 @@ func UpdateUserProfile(c *gin.Context) {
 	})
 }
 
-// Logout: Kullanıcıyı çevrimdışı yapar
 func Logout(c *gin.Context) {
 	var req struct {
 		Phone string `json:"phone" binding:"required"`
@@ -293,7 +288,6 @@ func Logout(c *gin.Context) {
 		return
 	}
 
-	// Veritabanında IsOnline değerini false yapıyoruz
 	if err := config.DB.Model(&models.User{}).Where("phone = ?", req.Phone).Update("is_online", false).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Çıkış işlemi başarısız"})
 		return

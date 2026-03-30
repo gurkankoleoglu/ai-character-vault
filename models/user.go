@@ -14,6 +14,7 @@ type User struct {
 	IsProfileCompleted bool   `gorm:"default:false" json:"is_profile_completed"`
 	IsOnline           bool   `gorm:"default:false" json:"is_online"` // YENİ ALAN
 	// YENİ EKLENEN PROFİL ALANLARI
+	Password  string `json:"-"`
 	Location  string `json:"location"`
 	Bio       string `gorm:"type:text" json:"bio"`
 	AvatarURL string `json:"avatar_url"`
