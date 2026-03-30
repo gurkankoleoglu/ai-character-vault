@@ -155,14 +155,14 @@ func SetupRoutes(r *gin.Engine) {
 	r.PUT("/jobs/:id", handlers.UpdateJob)
 	r.DELETE("/jobs/:id", handlers.DeleteJob)
 
-	r.POST("/posts", handlers.CreatePost)
+	//r.POST("/posts", handlers.CreatePost)
 	r.GET("/feed", handlers.GetFeed)
 
 	// YENİ EKLENEN SOSYAL AĞ ETKİLEŞİM ROTALARI
 	r.POST("/posts/:id/like", handlers.ToggleLike)
 	r.POST("/posts/:id/comment", handlers.AddComment)
 	// Belirli bir kullanıcının gönderilerini çek (Profil sayfası için)
-	r.GET("/posts/user/:phone", handlers.GetUserPosts)
+	//r.GET("/posts/user/:phone", handlers.GetUserPosts)
 
 	r.POST("/connect", handlers.SendConnectionRequest)            // İstek At
 	r.PUT("/connect/:id", handlers.RespondConnectionRequest)      // Kabul Et/Reddet
