@@ -118,6 +118,9 @@ func SetupRoutes(r *gin.Engine) {
 
 	// SetupRoutes içine ekle:
 	r.POST("/complete-profile", handlers.CompleteProfile)
+
+	r.POST("/login", handlers.Login)
+
 	r.GET("/applications/:id", handlers.GetApplicationDetail)
 	r.GET("/users/:phone", handlers.GetUserByPhone)
 

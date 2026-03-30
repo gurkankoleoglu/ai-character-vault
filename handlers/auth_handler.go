@@ -295,3 +295,43 @@ func Logout(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Başarıyla çıkış yapıldı"})
 }
+
+// Login: E-posta ve şifre ile giriş yapmayı sağlar
+func Login(c *gin.Context) {
+	type LoginRequest struct {
+		Email    string `json:"email" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+
+	var req LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "E-posta ve şifre gereklidir"})
+		return
+	}
+
+	var user models.User
+	// Veritabanında e-postayı arıyoruz
+	if err := config.DB.Where("email = ?", req.Email).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "E-posta veya şifre hatalı"})
+		return
+	}
+
+	// Şifre kontrolü
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "E-posta veya şifre hatalı"})
+		return
+	}
+
+	// Giriş başarılı, kullanıcıyı çevrimiçi yap
+	user.IsOnline = true
+	config.DB.Save(&user)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Giriş başarılı!",
+		"id":        user.ID,
+		"email":     user.Email,
+		"role":      user.Role,
+		"full_name": user.FullNames,
+		"is_online": user.IsOnline,
+	})
+}
