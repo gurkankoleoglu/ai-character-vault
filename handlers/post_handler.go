@@ -1,13 +1,78 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"path/filepath"
+	"time"
+
 	"stajyer-backend/config"
 	"stajyer-backend/models"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// CreatePost: Yeni bir gönderi oluşturur (Resim ve Görünürlük desteği ile)
+func CreatePost(c *gin.Context) {
+	phone := c.PostForm("phone")
+	content := c.PostForm("content")
+	visibility := c.PostForm("visibility")
+
+	if phone == "" || content == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Telefon numarası ve içerik gerekli"})
+		return
+	}
+
+	// Görünürlük seçilmemişse varsayılan olarak "public" (herkese açık) yap
+	if visibility == "" {
+		visibility = "public"
+	}
+
+	var user models.User
+	if err := config.DB.Where("phone = ?", phone).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kullanıcı bulunamadı"})
+		return
+	}
+
+	// Resim yükleme işlemi
+	var imageURL string
+	file, err := c.FormFile("image_file")
+	if err == nil {
+		// Çakışmaları önlemek için dosya isminin başına benzersiz bir zaman damgası ekliyoruz
+		filename := fmt.Sprintf("%d_%s", time.Now().Unix(), filepath.Base(file.Filename))
+		filePath := "uploads/" + filename
+
+		// Dosyayı sunucuya (uploads klasörüne) kaydet
+		if err := c.SaveUploadedFile(file, filePath); err == nil {
+			imageURL = filePath
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Resim kaydedilirken bir sorun oluştu"})
+			return
+		}
+	}
+
+	// Yeni post nesnesini oluştur
+	newPost := models.Post{
+		UserID:     user.ID,
+		Content:    content,
+		Visibility: visibility,
+		ImageURL:   imageURL,
+	}
+
+	if err := config.DB.Create(&newPost).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gönderi paylaşılamadı"})
+		return
+	}
+
+	// Yeni gönderiyi kullanıcı bilgileriyle birlikte frontend'e döndür
+	if err := config.DB.Preload("User").First(&newPost, newPost.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gönderi yüklendi ama geri döndürülemedi"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, newPost)
+}
 
 // GetFeed: Anasayfadaki tüm gönderileri (Yorumlar ve Beğenenler ile) getirir
 func GetFeed(c *gin.Context) {

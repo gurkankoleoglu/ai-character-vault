@@ -59,6 +59,7 @@ func SetupRoutes(r *gin.Engine) {
 
 	// --- AKİŞ / SOSYAL ---
 	r.GET("/feed", handlers.GetFeed)
+	r.POST("/posts", handlers.CreatePost)
 	r.POST("/posts/:id/like", handlers.ToggleLike)
 	r.POST("/posts/:id/comment", handlers.AddComment)
 	r.DELETE("/comments/:id", handlers.DeleteComment)
