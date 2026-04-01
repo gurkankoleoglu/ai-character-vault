@@ -108,7 +108,7 @@ func CompleteProfile(c *gin.Context) {
 	type CompleteProfileRequest struct {
 		Email       string `json:"email" binding:"required"`
 		Password    string `json:"password"`
-		Role        string `json:"role" binding:"required"`
+		Role        string `json:"role"`
 		Phone       string `json:"phone"`
 		FullName    string `json:"full_name"`
 		TcNo        string `json:"tc_no"`
@@ -128,6 +128,10 @@ func CompleteProfile(c *gin.Context) {
 	}
 
 	var user models.User
+	if req.Role == "" {
+		req.Role = "student"
+	}
+
 	if err := config.DB.Where("email = ?", req.Email).First(&user).Error; err != nil {
 		// Yeni kullanıcı oluştur
 		phoneToSave := req.Phone
